@@ -54,6 +54,11 @@
           <input type="text" id="custom_user_agent" placeholder="e.g. AcmeCorp-InternalUXAudit/1.0 (contact: security@acme.com)">
           <p class="small-dim" style="margin-top:6px;">Only for a site you're authorized to audit whose WAF blocks the default identifier — have that site's security team allowlist whatever you put here. HTTP Basic Auth credentials for password-protected UAT sites are set as repo secrets, not here — see DEPLOY.md.</p>
         </div>
+        <div class="field" style="margin-top:10px;">
+          <label class="field-label">Custom persona journeys (optional, no AI key needed)</label>
+          <textarea id="custom_personas" rows="5" placeholder="Freelance Designer&#10;Awareness: blog, guide, resource&#10;Consideration: portfolio, case-study, pricing&#10;Decision: contact, quote, hire"></textarea>
+          <p class="small-dim" style="margin-top:6px;">One persona per block (blank line between blocks). First line is the persona name; each following line is "Stage: keyword1, keyword2, …" matched against crawled URLs/titles. Purely rule-based — works with or without an ANTHROPIC_API_KEY secret. Shows up in the report's "Inferred User Journey Maps" section alongside the built-in personas.</p>
+        </div>
       </details>
 
       <details open style="margin-bottom:18px;">
@@ -155,6 +160,8 @@ document.getElementById('start-btn').addEventListener('click', async () => {
     sessionStorage.removeItem('audit_pat');
   }
 
+  document.title = ORIGINAL_TITLE;
+  ensureNotificationPermission();
   document.getElementById('start-btn').disabled = true;
   document.getElementById('progress-section').style.display = 'block';
   document.getElementById('progress-section').scrollIntoView({behavior:'smooth'});
@@ -181,6 +188,7 @@ document.getElementById('start-btn').addEventListener('click', async () => {
           include_subdomains: document.getElementById('include_subdomains').checked,
           check_external_links: document.getElementById('check_external_links').checked,
           custom_user_agent: document.getElementById('custom_user_agent').value,
+          custom_personas: document.getElementById('custom_personas').value,
         },
       }),
     });
@@ -201,6 +209,61 @@ document.getElementById('start-btn').addEventListener('click', async () => {
 function setStatus(label, detail) {
   document.getElementById('status-badge').textContent = label;
   document.getElementById('status-detail').textContent = detail;
+}
+
+const ORIGINAL_TITLE = document.title;
+
+// Ask for notification permission once, right when a run starts — asking
+// only at that moment (not on page load) means the browser's permission
+// prompt shows up with context, which is more likely to get a real answer
+// instead of an instinctive dismiss.
+function ensureNotificationPermission() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+// Fires once the run reaches a final state (success or failure). Covers
+// three channels at once, since any one of them alone can be missed:
+// a system notification (works even if the tab is backgrounded/minimized),
+// an in-page toast (works even if notifications are blocked), and a
+// changed tab title (catches anyone glancing at their tab bar).
+function notifyAuditFinished(success, message) {
+  document.title = (success ? '✅ ' : '⚠️ ') + ORIGINAL_TITLE;
+
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification(success ? 'Audit complete' : 'Audit failed', {
+        body: message,
+        tag: 'ux-audit-run',
+      });
+    } catch (e) { /* some browsers restrict Notification outside a user gesture context — toast still covers it */ }
+  }
+
+  showToast(success, message);
+}
+
+function showToast(success, message) {
+  let toast = document.getElementById('audit-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'audit-toast';
+    toast.style.cssText = `
+      position: fixed; bottom: 24px; right: 24px; max-width: 360px;
+      padding: 14px 18px; border-radius: var(--radius-sm, 8px);
+      font-family: Inter, sans-serif; font-size: 14px; line-height: 1.4;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18); z-index: 9999;
+      cursor: pointer; transition: opacity 0.3s;
+    `;
+    document.body.appendChild(toast);
+    toast.addEventListener('click', () => { toast.style.display = 'none'; });
+  }
+  toast.style.background = success ? '#E4EFE7' : '#F3CFC9';
+  toast.style.color = '#2b2b28';
+  toast.textContent = (success ? '✅ ' : '⚠️ ') + message + ' (click to dismiss)';
+  toast.style.display = 'block';
+  toast.style.opacity = '1';
 }
 
 async function pollRun(owner, repo, pat, dispatchTime) {
@@ -231,10 +294,12 @@ async function pollRun(owner, repo, pat, dispatchTime) {
         document.getElementById('view-report-btn').style.display = 'inline-block';
         document.getElementById('view-report-btn').href = 'report.html?t=' + Date.now();
         document.getElementById('start-btn').disabled = false;
+        notifyAuditFinished(true, 'Your audit is done — refresh or open the report to see it.');
         return;
       } else {
         setStatus('FAILED', `The run finished with: ${run.conclusion}. Check the logs.`);
         document.getElementById('start-btn').disabled = false;
+        notifyAuditFinished(false, `The audit run failed (${run.conclusion}) — check the logs on GitHub.`);
         return;
       }
     } catch (e) {
@@ -243,6 +308,7 @@ async function pollRun(owner, repo, pat, dispatchTime) {
   }
   setStatus('UNKNOWN', 'Stopped watching after a few minutes — check the run logs on GitHub directly.');
   document.getElementById('start-btn').disabled = false;
+  notifyAuditFinished(false, 'Lost track of the run after a few minutes — check GitHub Actions directly.');
 }
 </script>
 

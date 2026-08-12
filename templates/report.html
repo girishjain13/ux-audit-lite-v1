@@ -312,6 +312,30 @@
     {% endfor %}
   </div>
 
+  {% if data.target_customers and data.target_customers.personas %}
+  <div class="section">
+    <div class="section-head"><h2>Target Customers &amp; Their Journeys</h2><div class="desc">
+      AI-inferred purely from the pages, titles, and keywords actually crawled — not real user research,
+      and not outside knowledge of this brand. Treat it as an informed starting hypothesis worth validating
+      against real customer data, the same way the journey maps above should be.
+    </div></div>
+    {% for persona in data.target_customers.personas %}
+    <div class="card" style="margin-bottom:14px;">
+      <h3 style="font-size:16px; margin:0 0 6px;">{{ persona.name }}</h3>
+      <p style="margin:0 0 8px;">{{ persona.description }}</p>
+      <p class="small-dim" style="margin:0 0 14px;"><em>Evidence: {{ persona.evidence }}</em></p>
+      {% for step in persona.journey %}
+      <div class="action-item">
+        <span class="pill low">{{ loop.index }}</span>
+        <span class="action-area">{{ step.step }}</span>
+        <span style="flex:1;">{{ step.detail }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <div class="section">
     <div class="section-head"><h2>Internal Linking Map</h2><div class="desc">A map of how pages link to each other (capped at {{ graph_cap }} nodes for legibility). Bigger dots have more inbound links — tiny, disconnected dots are worth a look.</div></div>
     <div class="chart-box">

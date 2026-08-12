@@ -16,7 +16,7 @@ from typing import Awaitable, Callable, Optional
 
 from analyzers import accessibility, content, feature_matrix, ia, integrations, journey, keywords, link_health, scoring, seo
 from analyzers.heuristics import classify_into_heuristics, heuristic_summary
-from ai_insights import generate_ai_summary
+from ai_insights import generate_ai_summary, generate_target_customers
 from crawler import AsyncCrawler, CrawlConfig
 from models import AuditStatus, CrawlProgress
 from ux_copy import build_lead_assessment, build_plain_summary
@@ -27,6 +27,7 @@ async def run_audit(
     progress: CrawlProgress,
     on_progress: Optional[Callable[[], Awaitable[None]]] = None,
     with_ai_summary: bool = True,
+    custom_personas: Optional[list[dict]] = None,
 ) -> dict:
     progress.started_at = datetime.now(timezone.utc)
     crawler = AsyncCrawler(config, progress)
@@ -40,7 +41,18 @@ async def run_audit(
     # everything, no issues," which reads as a suspiciously perfect result
     # rather than an obvious failure. Surface that distinction explicitly
     # rather than let a failed crawl look like a clean bill of health.
+    #
+    # This also needs to catch the *partial*-failure case, not just total
+    # failure: if robots.txt/a WAF blocks the crawler but sitemap.xml still
+    # lists thousands of URLs, those URLs still get queued and counted as
+    # "pages" (see crawler.py's sitemap-seeding) even though none of them
+    # were ever actually fetched. A page-count-based total that only fires
+    # at exactly 0% real data misses this — a site that's 99% blocked still
+    # looks "mostly fine" by that math, while every other metric (orphan
+    # count, keywords, status codes) quietly goes empty or nonsensical.
+    total_pages = len(pages)
     pages_with_real_data = sum(1 for rec in pages.values() if rec.status_code and rec.status_code < 400)
+    real_data_ratio = (pages_with_real_data / total_pages) if total_pages else 0.0
     crawl_warning = None
     if pages_with_real_data == 0:
         sample_errors = {rec.error for rec in pages.values() if rec.error}
@@ -51,8 +63,42 @@ async def run_audit(
             f"site blocking automated requests (bot detection), or the URL redirecting somewhere "
             f"unexpected. Check the Page Inventory tab's error column for specifics."
         )
+    elif total_pages >= 10 and real_data_ratio < 0.10:
+        sample_errors = {rec.error for rec in pages.values() if rec.error}
+        error_note = f" (seen: {', '.join(sorted(sample_errors))})" if sample_errors else ""
+        crawl_warning = (
+            f"Only {pages_with_real_data} of {total_pages} pages ({round(real_data_ratio * 100, 1)}%) were "
+            f"actually fetched successfully{error_note} — most of what's counted as \"crawled\" here was "
+            f"seeded from sitemap.xml but never really reached (robots.txt/WAF block, bot detection, etc.), "
+            f"so orphan counts, keywords, and link-graph metrics below reflect a mostly-empty crawl, not a "
+            f"real picture of the site. Check the Page Inventory tab's error column for specifics."
+        )
 
     ia_results = ia.run_ia_analysis(pages, edges, start_url_resolved)
+
+    # Distinct from the above: a crawl can fetch plenty of real 200-status
+    # pages yet still extract zero usable internal links — the classic
+    # signature of a JS-rendered/SPA site with no server-rendered <a href>
+    # navigation (this build has no JS rendering; see README's known
+    # limitations). When that happens, every page looks orphaned and the
+    # link graph is empty, which is a specific, useful thing to say
+    # out loud rather than leaving the reader to guess why the numbers
+    # look broken.
+    if (
+        crawl_warning is None
+        and pages_with_real_data >= 3
+        and ia_results["graph_edge_count"] == 0
+        and ia_results["orphan_page_count"] >= max(3, int(0.8 * total_pages))
+    ):
+        crawl_warning = (
+            f"{pages_with_real_data} page(s) were fetched successfully, but zero internal links were found "
+            f"in the crawled HTML — so essentially every page ({ia_results['orphan_page_count']} of "
+            f"{total_pages}) shows up as orphaned. This usually means navigation is rendered client-side by "
+            f"JavaScript (this build doesn't execute JS — see the project's known limitations) rather than "
+            f"real &lt;a href&gt; links in the server-sent HTML. Orphan/click-depth/internal-linking results "
+            f"below aren't reliable for this crawl."
+        )
+
     content_results = content.run_content_analysis(pages)
     a11y_results = accessibility.run_accessibility_analysis(pages)
     seo_results = seo.run_seo_analysis(pages)
@@ -66,7 +112,7 @@ async def run_audit(
     feature_matrix_results = feature_matrix.run_feature_matrix(
         crawler.feature_hits, integration_results["detected"]
     )
-    journey_map = journey.build_journey_map(pages, ia_results["click_depths"])
+    journey_map = journey.build_journey_map(pages, ia_results["click_depths"], custom_personas=custom_personas)
     heuristics_results = classify_into_heuristics(score_results["action_plan"])
     plain_summary = build_plain_summary(score_results, ia_results, content_results, a11y_results)
     lead_assessment = build_lead_assessment(
@@ -137,6 +183,7 @@ async def run_audit(
     if with_ai_summary:
         summary = await generate_ai_summary(audit_data)
         audit_data["ai_summary"] = summary
+        audit_data["target_customers"] = await generate_target_customers(audit_data)
 
     return audit_data
 

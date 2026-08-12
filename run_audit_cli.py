@@ -33,6 +33,7 @@ from pathlib import Path
 
 from audit_engine import run_audit
 from crawler import CrawlConfig
+from analyzers.journey import parse_custom_personas
 from models import AuditStatus, CrawlProgress
 from report_builder import export_csv, export_json, export_xlsx, render_html_report
 
@@ -82,6 +83,12 @@ async def main() -> int:
     basic_auth_password = os.environ.get("BASIC_AUTH_PASSWORD", "").strip() or None
     verify_ssl = _env_bool("VERIFY_SSL", True)
     custom_user_agent = os.environ.get("CUSTOM_USER_AGENT", "").strip() or None
+    # Rule-based custom personas — no AI/API key needed, works purely by
+    # keyword-matching against crawled URLs/titles (see analyzers/journey.py).
+    # Separate from the AI-inferred target-customer section, which needs
+    # ANTHROPIC_API_KEY; this is the fallback/complement that works without it.
+    custom_personas_raw = os.environ.get("CUSTOM_PERSONAS", "").strip()
+    custom_personas = parse_custom_personas(custom_personas_raw) if custom_personas_raw else []
 
     config = CrawlConfig(
         start_url=start_url,
@@ -109,7 +116,10 @@ async def main() -> int:
             last_logged = progress.pages_crawled
             _print_progress_line(progress)
 
-    audit_data = await run_audit(config, progress, on_progress=on_progress, with_ai_summary=with_ai_summary)
+    audit_data = await run_audit(
+        config, progress, on_progress=on_progress, with_ai_summary=with_ai_summary,
+        custom_personas=custom_personas,
+    )
     audit_data["audit_id"] = "latest"
 
     if progress.status == AuditStatus.ERROR:

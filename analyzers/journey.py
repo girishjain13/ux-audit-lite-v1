@@ -92,6 +92,55 @@ def _matches_stage(url: str, title: str, keywords: tuple) -> bool:
     return any(kw in haystack for kw in keywords)
 
 
+def parse_custom_personas(text: str) -> list[dict]:
+    """Parses a small text DSL for user-defined personas — the same
+    keyword-matching engine as the built-in JOURNEYS above, but for
+    personas the user names themselves. Entirely rule-based: no AI call,
+    no API key needed, so this works even when ANTHROPIC_API_KEY isn't set.
+
+    Format (blank line separates personas):
+
+        Freelance Designer
+        Awareness: blog, guide, resource
+        Consideration: portfolio, case-study, pricing
+        Decision: contact, quote, hire
+
+    First line of each block is the persona name. Each following
+    "Stage: kw1, kw2, kw3" line becomes one journey stage, matched against
+    each crawled page's URL and title the same way the built-in personas
+    are. Malformed lines are skipped rather than raising — a typo in one
+    persona definition shouldn't break the whole feature.
+    """
+    personas = []
+    for block in text.strip().split("\n\n"):
+        lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+        if len(lines) < 2:
+            continue
+        name = lines[0]
+        stages = []
+        for line in lines[1:]:
+            if ":" not in line:
+                continue
+            stage_name, _, kw_text = line.partition(":")
+            keywords = tuple(k.strip().lower() for k in kw_text.split(",") if k.strip())
+            if not stage_name.strip() or not keywords:
+                continue
+            stages.append({
+                "id": stage_name.strip().lower().replace(" ", "_"),
+                "name": stage_name.strip(),
+                "description": f"Custom stage — pages matching: {', '.join(keywords)}.",
+                "keywords": keywords,
+            })
+        if stages:
+            personas.append({
+                "id": "custom_" + name.strip().lower().replace(" ", "_"),
+                "name": f"{name.strip()} (custom)",
+                "description": "User-defined persona — matched by keyword against crawled URLs/titles, the same way the built-in personas above are.",
+                "stages": stages,
+            })
+    return personas
+
+
 def _build_single_journey(journey_def: dict, pages: dict, click_depths: dict) -> dict:
     stages_out = []
     for stage in journey_def["stages"]:
@@ -146,8 +195,9 @@ def _build_single_journey(journey_def: dict, pages: dict, click_depths: dict) ->
     }
 
 
-def build_journey_map(pages: dict, click_depths: dict) -> dict:
-    journeys = [_build_single_journey(jd, pages, click_depths) for jd in JOURNEYS]
+def build_journey_map(pages: dict, click_depths: dict, custom_personas: list[dict] | None = None) -> dict:
+    all_journeys = JOURNEYS + (custom_personas or [])
+    journeys = [_build_single_journey(jd, pages, click_depths) for jd in all_journeys]
     return {
         "journeys": journeys,
         "journeys_with_any_presence": sum(1 for j in journeys if j["stages_present"] > 0),

@@ -61,3 +61,91 @@ Top action items already identified: {"; ".join(a["action"] for a in scoring["ac
         return "".join(block.text for block in resp.content if block.type == "text")
     except Exception as exc:
         return f"(AI summary unavailable: {exc})"
+
+
+async def generate_target_customers(audit_data: dict) -> dict | None:
+    """Infers likely target-customer personas and a plausible journey for
+    each, purely from what was actually crawled (titles, keywords, URL
+    taxonomy, detected integrations) — not from any external knowledge of
+    the brand. Same honesty framing as journey.py's rule-based journeys:
+    this is an informed inference from site structure/content, not real
+    user research, and should read that way rather than as a confident
+    claim about who actually uses the site.
+
+    Returns None if no API key is configured, the crawl found too little
+    real content to infer anything from, or the model call fails — the
+    rest of the report works fine without this section.
+    """
+    if not ai_insights_available():
+        return None
+
+    pages_with_real_data = sum(
+        1 for p in audit_data.get("pages", {}).values() if p.get("status_code") and p["status_code"] < 400
+    )
+    if pages_with_real_data < 3:
+        return None
+
+    try:
+        import anthropic
+    except ImportError:
+        return None
+
+    client = anthropic.AsyncAnthropic()
+
+    sample_pages = [
+        {"url": p["url"], "title": p.get("title"), "meta_description": p.get("meta_description")}
+        for p in audit_data["pages"].values()
+        if p.get("status_code") and p["status_code"] < 400 and (p.get("title") or p.get("meta_description"))
+    ][:40]
+    top_keywords = [k["term"] for k in audit_data.get("keywords", {}).get("top_keywords", [])[:20]]
+    top_phrases = [p["term"] for p in audit_data.get("keywords", {}).get("top_phrases", [])[:15]]
+    taxonomy = audit_data.get("ia", {}).get("taxonomy", {})
+    integrations = [d["name"] for d in audit_data.get("integrations", {}).get("detected", [])[:10]]
+
+    prompt = f"""You are a UX researcher inferring who a website is actually built for, based only on
+what was crawled from it — no outside knowledge of the brand, no assumptions beyond this evidence.
+If the evidence is thin or generic, say fewer personas rather than inventing detail you can't support.
+
+Site: {audit_data['meta']['start_url']}
+Sample page titles/descriptions (subset of {audit_data['meta']['pages_crawled']} pages crawled):
+{json.dumps(sample_pages, indent=2)[:4000]}
+Top keywords: {", ".join(top_keywords)}
+Top phrases: {", ".join(top_phrases)}
+URL sections and page counts: {json.dumps(taxonomy)}
+Detected integrations: {", ".join(integrations) or "none recognized"}
+
+Respond with ONLY valid JSON (no markdown fences, no preamble), matching exactly this shape:
+{{
+  "personas": [
+    {{
+      "name": "short persona label, e.g. 'Cost-Conscious Small Business Owner'",
+      "description": "1-2 sentences on who this is and what they're trying to accomplish on this site",
+      "evidence": "1 sentence citing the specific pages/keywords/sections that support this persona existing",
+      "journey": [
+        {{"step": "short stage name, e.g. 'Discovers via search'", "detail": "1 sentence, referencing an actual crawled page/URL where relevant"}}
+      ]
+    }}
+  ]
+}}
+Include 2-4 personas — only as many as the evidence actually supports. Each journey should have
+3-5 steps. Keep every field genuinely short; this renders as compact cards, not an essay."""
+
+    try:
+        resp = await client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(block.text for block in resp.content if block.type == "text").strip()
+        text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        parsed = json.loads(text)
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("personas"), list):
+            return None
+        return parsed
+    except Exception:
+        # Deliberately silent — this is a "nice to have" section layered on
+        # top of a report that's already complete without it. A malformed
+        # model response or a transient API error shouldn't be surfaced as
+        # a report-breaking problem; it should just result in the section
+        # not appearing, same as when no API key is configured at all.
+        return None

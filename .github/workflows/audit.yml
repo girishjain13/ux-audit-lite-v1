@@ -47,6 +47,10 @@ on:
         description: "Optional custom User-Agent (only for sites you're authorized to audit whose WAF blocks the default identifier)"
         required: false
         default: ""
+      custom_personas:
+        description: "Optional custom persona(s) for journey mapping — see DEPLOY.md for the format. No AI key needed, purely keyword-matched."
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -90,6 +94,7 @@ jobs:
           BASIC_AUTH_USERNAME: ${{ secrets.BASIC_AUTH_USERNAME }}
           BASIC_AUTH_PASSWORD: ${{ secrets.BASIC_AUTH_PASSWORD }}
           CUSTOM_USER_AGENT: ${{ inputs.custom_user_agent }}
+          CUSTOM_PERSONAS: ${{ inputs.custom_personas }}
         run: python run_audit_cli.py
 
       - uses: actions/upload-pages-artifact@v3
