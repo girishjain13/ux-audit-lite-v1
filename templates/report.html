@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UX & IA Audit — {{ data.meta.start_url }}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="masthead">
+  <div class="kicker">UX &amp; Information Architecture Audit</div>
+  <h1>{{ data.meta.start_url }}</h1>
+  <div class="sub">A heuristic evaluation generated from a {{ data.meta.pages_crawled }}-page crawl — read it the way you'd read a colleague's design review, not a server log.</div>
+  <div class="meta-row">
+    <span><b>Pages reviewed</b> {{ data.meta.pages_crawled }}</span>
+    <span><b>Crawled</b> {{ data.meta.finished_at[:10] }}</span>
+    <span><b>Duration</b> {{ data.meta.elapsed_seconds }}s</span>
+  </div>
+  <div class="export-links no-print">
+    <a href="/api/audits/{{ data.audit_id }}/export/json">Export JSON</a>
+    <a href="/api/audits/{{ data.audit_id }}/export/csv">Export CSV</a>
+    <a href="/api/audits/{{ data.audit_id }}/export/xlsx">Export XLSX</a>
+    <a href="#" onclick="window.print(); return false;">Print / Save as PDF</a>
+  </div>
+</div>
+
+<div class="wrap">
+
+  {% if data.crawl_warning %}
+  <div class="section">
+    <div class="card" style="border: 2px solid var(--coral); background: rgba(178,58,52,0.06);">
+      <h2 style="font-size:16px; margin:0 0 8px; color: var(--coral);">⚠ This crawl didn't actually reach the site</h2>
+      <p style="margin:0; color: var(--ink);">{{ data.crawl_warning }}</p>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="section">
+    <div class="summary-card">
+      <h2 style="font-size:18px; margin-bottom:8px;">In plain terms</h2>
+      <ul>
+        {% for line in data.plain_summary %}
+        <li>{{ line|replace('**','')|safe }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  {% if data.ai_summary %}
+  <div class="section">
+    <div class="section-head"><h2>Executive Summary</h2><div class="desc">AI-generated from the scores and findings below — a starting point for a stakeholder update, not a replacement for reading the detail.</div></div>
+    <div class="card"><div class="ai-note">{{ data.ai_summary }}</div></div>
+  </div>
+  {% endif %}
+
+  <div class="section">
+    <div class="section-head"><h2>UX Lead's Assessment</h2><div class="desc">A narrative read of the findings below, the way a senior UX lead would actually frame them in a review — not just restated numbers.</div></div>
+    <div class="card">
+      {% for para in data.lead_assessment.paragraphs %}
+      <p style="margin:{{ '0 0 14px' if not loop.last else '0' }};">{{ para }}</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h2>Scorecard</h2><div class="desc">Each score is 0–100, where higher is healthier. Hover the label for what it's actually measuring.</div></div>
+    <div class="score-grid">
+      <div class="score-card band-{{ data.scoring.ux_maturity_band.replace(' ', '-') }}">
+        <div class="num">{{ data.scoring.ux_maturity_score }}</div>
+        <div class="label">{{ score_copy.ux_maturity_score.label }}</div>
+        <div class="plain">{{ score_copy.ux_maturity_score.plain }}</div>
+      </div>
+      <div class="score-card">
+        <div class="num">{{ data.scoring.ia_health_score }}</div>
+        <div class="label">{{ score_copy.ia_health_score.label }}</div>
+        <div class="plain">{{ score_copy.ia_health_score.plain }}</div>
+      </div>
+      <div class="score-card">
+        <div class="num">{{ data.scoring.content_quality_score }}</div>
+        <div class="label">{{ score_copy.content_quality_score.label }}</div>
+        <div class="plain">{{ score_copy.content_quality_score.plain }}</div>
+      </div>
+      <div class="score-card">
+        <div class="num">{{ data.scoring.accessibility_score }}</div>
+        <div class="label">{{ score_copy.accessibility_score.label }}</div>
+        <div class="plain">{{ score_copy.accessibility_score.plain }}</div>
+      </div>
+      <div class="score-card">
+        <div class="num">{{ data.scoring.seo_score }}</div>
+        <div class="label">{{ score_copy.seo_score.label }}</div>
+        <div class="plain">{{ score_copy.seo_score.plain }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <h2>Heuristic Evaluation</h2>
+      <div class="desc">
+        Findings organized against Nielsen's 10 usability heuristics — the framework most design reviews already use.
+        {{ data.heuristics_summary.assessed_count }} of 10 can be checked from a page crawl;
+        the other {{ data.heuristics_summary.not_assessed_count }} need a human walking through real interactions, and are marked as such rather than guessed at.
+      </div>
+    </div>
+    <div class="heuristic-grid">
+      {% for h in data.heuristics %}
+      <div class="heuristic-card {{ 'not-assessed' if not h.assessable }}">
+        <div class="htop">
+          <div>
+            <h3>{{ h.id|upper }} · {{ h.name }}</h3>
+            <div class="blurb">{{ h.blurb }}</div>
+          </div>
+          {% if not h.assessable %}
+            <span class="sev-badge na">Not assessed</span>
+          {% elif h.findings %}
+            <span class="sev-badge sev-{{ h.max_severity }}">Severity {{ h.max_severity }} · {{ h.findings|length }} finding{{ 's' if h.findings|length != 1 }}</span>
+          {% else %}
+            <span class="sev-badge sev-0">No issues found</span>
+          {% endif %}
+        </div>
+        {% if h.assessable and h.findings %}
+        <ul class="findings">
+          {% for f in h.findings[:4] %}
+          <li>{{ f.text }}</li>
+          {% endfor %}
+          {% if h.findings|length > 4 %}<li class="small-dim">+ {{ h.findings|length - 4 }} more — see the action plan below.</li>{% endif %}
+        </ul>
+        {% elif not h.assessable %}
+        <div class="why-not">{{ h.why_not }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h2>Prioritized Action Plan</h2><div class="desc">Every finding above, ranked — with a rough Impact/Effort read on each, the way you'd actually decide what goes into the next sprint versus the backlog.</div></div>
+    <div class="chart-grid" style="margin-bottom:14px;">
+      <div class="chart-box" style="grid-column: 1 / -1;">
+        <h3>Impact vs. Effort</h3>
+        <canvas id="chart-impact-effort" height="140"></canvas>
+      </div>
+    </div>
+    <div class="card">
+      {% for item in data.scoring.action_plan %}
+      <div class="action-item">
+        <span class="pill {{ item.priority }}">{{ item.priority }}</span>
+        <span class="action-area">{{ item.area }}</span>
+        <span style="flex:1;">{{ item.action }}</span>
+        <span class="small-dim" style="white-space:nowrap;">Impact: {{ item.impact }} · Effort: {{ item.effort }}</span>
+      </div>
+      {% else %}
+      <p class="small-dim">No significant issues detected — nice work.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h2>Most Used Keywords</h2><div class="desc">The words and two-word phrases that come up most across the crawled pages — a quick read on what the site is actually about, and whether that matches what it should be about.</div></div>
+    <div class="chart-grid">
+      <div class="chart-box">
+        <h3>Top keywords</h3>
+        <canvas id="chart-keywords" height="260"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Top phrases (2 words)</h3>
+        <table>
+          <thead><tr><th>Phrase</th><th>Occurrences</th></tr></thead>
+          <tbody>
+            {% for p in data.keywords.top_phrases[:15] %}
+            <tr><td>{{ p.term }}</td><td>{{ p.count }}</td></tr>
+            {% else %}
+            <tr><td class="small-dim" colspan="2">Not enough repeated phrases found.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h2>Integrations &amp; Third-Party Scripts</h2><div class="desc">What's actually loading on the site — analytics, tag managers, chat widgets, and anything else pulled in from an external script. Matched against a registry of known loader URLs; anything not recognized is still listed under "Other scripts found," it's just not identified by name.</div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.integrations.unique_external_scripts }}</div><div class="l">Unique external scripts</div></div>
+      <div class="stat"><div class="v">{{ data.integrations.detected|length }}</div><div class="l">Recognized integrations</div></div>
+      <div class="stat"><div class="v">{{ data.integrations.avg_scripts_per_page }}</div><div class="l">Avg scripts / page</div></div>
+      <div class="stat"><div class="v">{{ data.integrations.heavy_script_pages|length }}</div><div class="l">Pages over {{ data.integrations.heavy_script_threshold }} scripts</div></div>
+    </div>
+    <div class="chart-grid" style="margin-top:16px;">
+      <div class="chart-box">
+        <h3>Recognized integrations</h3>
+        {% if data.integrations.detected %}
+        <table>
+          <thead><tr><th>Integration</th><th>Category</th><th>Found on</th></tr></thead>
+          <tbody>
+            {% for d in data.integrations.detected %}
+            <tr><td>{{ d.name }}</td><td class="small-dim">{{ d.category }}</td><td>{{ d.pages_found_on }} pages ({{ d.pct_of_pages }}%)</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="small-dim">No recognized third-party integrations found in the registry this tool checks against.</p>
+        {% endif %}
+      </div>
+      <div class="chart-box">
+        <h3>Other scripts found (unrecognized)</h3>
+        {% if data.integrations.other_scripts %}
+        <table>
+          <thead><tr><th>Domain</th><th>References</th></tr></thead>
+          <tbody>
+            {% for s in data.integrations.other_scripts[:12] %}
+            <tr><td class="url-cell">{{ s.domain }}</td><td>{{ s.reference_count }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="small-dim">Every external script found matched something in the known-integrations registry.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% if data.integrations.heavy_script_pages %}
+    <p class="small-dim" style="margin-top:14px;">{{ data.integrations.heavy_script_pages|length }} page(s) load more than {{ data.integrations.heavy_script_threshold }} external scripts — that's usually a sign of accumulated, possibly-unused marketing/analytics tags worth auditing for page-speed's sake.</p>
+    {% endif %}
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h2>Feature Matrix</h2><div class="desc">A checklist of common website features detected from the actual markup crawled — search, login, e-commerce, and so on. "Not detected" means the pattern this tool checks for wasn't found; worth a manual double-check before treating it as confirmed absent, especially for anything gated behind a login.</div></div>
+    <div class="stat-row" style="margin-bottom:14px;">
+      <div class="stat"><div class="v">{{ data.feature_matrix.present_count }} / {{ data.feature_matrix.total_count }}</div><div class="l">Features detected</div></div>
+    </div>
+    <div class="card">
+      <table>
+        <thead><tr><th>Feature</th><th>Status</th><th>Found on</th></tr></thead>
+        <tbody>
+          {% for row in data.feature_matrix.rows %}
+          <tr>
+            <td>{{ row.name }}</td>
+            <td>
+              {% if row.present %}<span class="tag ok">detected</span>{% else %}<span class="tag muted">not detected</span>{% endif %}
+            </td>
+            <td class="small-dim">
+              {% if row.page_count %}{{ row.page_count }} page(s){% elif row.present %}yes{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h2>Site Structure</h2><div class="desc">How the site is organized, and how many clicks it takes to reach each page from the homepage.</div></div>
+    <div class="chart-grid">
+      <div class="chart-box">
+        <h3>Pages per top-level section</h3>
+        <canvas id="chart-taxonomy" height="220"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Site hierarchy</h3>
+        <div class="tree" id="hierarchy-tree" style="max-height:260px; overflow-y:auto;"></div>
+      </div>
+    </div>
+    <div class="stat-row" style="margin-top:16px;">
+      <div class="stat"><div class="v">{{ data.ia.orphan_page_count }}</div><div class="l">Orphan pages</div></div>
+      <div class="stat"><div class="v">{{ data.ia.max_click_depth }}</div><div class="l">Max click depth</div></div>
+      <div class="stat"><div class="v">{{ data.ia.avg_click_depth }}</div><div class="l">Avg click depth</div></div>
+      <div class="stat"><div class="v">{{ data.ia.pages_over_3_clicks }}</div><div class="l">Pages &gt;3 clicks deep</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h2>Inferred User Journey Maps</h2><div class="desc">
+      Not real behavioral data — a crawler has no access to analytics or session recordings. This infers where each
+      persona's goal-driven path most likely lives in the site's actual structure, and how many clicks it takes to
+      reach each stage. Worth validating against real analytics if you have them. A persona with little or no
+      presence likely just isn't a priority for this site — that's itself a useful signal, not a failure.
+    </div></div>
+    <div class="stat-row" style="margin-bottom:14px;">
+      <div class="stat"><div class="v">{{ data.journey_map.journeys_with_any_presence }} / {{ data.journey_map.journeys_total }}</div><div class="l">Personas with any presence</div></div>
+    </div>
+    {% for journey in data.journey_map.journeys %}
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+        <h3 style="font-size:16px;">{{ journey.name }}</h3>
+        <span class="small-dim">{{ journey.stages_present }} / {{ journey.stages_total }} stages found</span>
+      </div>
+      <p class="small-dim" style="margin:0 0 12px;">{{ journey.description }}</p>
+      {% for stage in journey.stages %}
+      <div class="action-item">
+        <span class="pill {{ 'low' if stage.present else 'high' }}">{{ 'found' if stage.present else 'missing' }}</span>
+        <span class="action-area">{{ stage.name }}</span>
+        <span style="flex:1;">
+          {{ stage.description }}
+          {% if stage.present %}
+            <br><span class="small-dim">{{ stage.page_count }} page(s) · closest example: {{ stage.example_url }} ({{ stage.click_depth }} click{{ 's' if stage.click_depth != 1 }} from home)</span>
+          {% endif %}
+        </span>
+      </div>
+      {% endfor %}
+      {% if journey.notes %}
+      <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--line);">
+        {% for note in journey.notes %}
+        <p class="small-dim" style="margin:0 0 8px;">{{ note }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h2>Internal Linking Map</h2><div class="desc">A map of how pages link to each other (capped at {{ graph_cap }} nodes for legibility). Bigger dots have more inbound links — tiny, disconnected dots are worth a look.</div></div>
+    <div class="chart-box">
+      <canvas id="link-graph" width="1040" height="440" style="width:100%; max-width:100%; border-radius: var(--radius-sm); background: var(--surface-2); cursor: grab;"></canvas>
+    </div>
+  </div>
+
+  {% if data.link_health.checked %}
+  <div class="section">
+    <div class="section-head"><h2>External Link Health</h2><div class="desc">Spot-checked {{ data.link_health.checked }} external link target(s) found during the crawl.</div></div>
+    <div class="card">
+      {% if data.link_health.broken %}
+      <table>
+        <thead><tr><th>Broken URL</th><th>Status</th><th>Linked from</th></tr></thead>
+        <tbody>
+          {% for b in data.link_health.broken[:20] %}
+          <tr><td class="url-cell">{{ b.url }}</td><td>{{ b.status_code or b.get('error','?') }}</td><td>{{ b.linked_from_count }} page(s)</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="small-dim">No broken external links found in the sample checked.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="section">
+    <div class="section-head"><h2>Crawl Detail</h2><div class="desc">The underlying numbers behind the scores above, for anyone who wants to double-check the math.</div></div>
+    <div class="chart-grid">
+      <div class="chart-box">
+        <h3>HTTP status codes returned</h3>
+        <canvas id="chart-status" height="180"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Content &amp; accessibility signals</h3>
+        <table>
+          <tr><td>Average word count</td><td>{{ data.content.word_count_avg }}</td></tr>
+          <tr><td>Thin content pages</td><td>{{ data.content.thin_content_count }}</td></tr>
+          <tr><td>Duplicate content pages</td><td>{{ data.content.duplicate_content_page_count }}</td></tr>
+          <tr><td>Image alt-text coverage</td><td>{{ data.content.image_alt_coverage_pct }}%</td></tr>
+          <tr><td>Pages with a11y issues</td><td>{{ data.accessibility.pages_with_issues }} / {{ data.accessibility.pages_analyzed }}</td></tr>
+          <tr><td>Schema.org coverage</td><td>{{ data.seo.schema_coverage_pct }}%</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h2>Full Page Inventory</h2><div class="desc">{{ data.pages|length }} pages, sortable and filterable.</div></div>
+    <div class="card">
+      <div class="field" style="max-width:340px;">
+        <input type="text" id="table-filter" placeholder="Filter by URL or title…">
+      </div>
+      <div class="table-scroll">
+        <table id="inventory-table">
+          <thead>
+            <tr>
+              <th data-key="url">URL</th>
+              <th data-key="status_code">Status</th>
+              <th data-key="title">Title</th>
+              <th data-key="word_count">Words</th>
+              <th data-key="path_depth">Path Depth</th>
+              <th data-key="click_depth">Click Depth</th>
+              <th data-key="flags">Flags</th>
+            </tr>
+          </thead>
+          <tbody id="inventory-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script id="audit-data" type="application/json">{{ data_json|safe }}</script>
+<script>
+const auditData = JSON.parse(document.getElementById('audit-data').textContent);
+Chart.defaults.color = '#6E6A62';
+Chart.defaults.font.family = "Inter";
+Chart.defaults.borderColor = 'rgba(231,224,212,0.7)';
+
+const PALETTE = ['#C1531F', '#4F7A5C', '#B8862B', '#B23A34', '#8B8378', '#E7E0D4'];
+
+new Chart(document.getElementById('chart-status'), {
+  type: 'doughnut',
+  data: {
+    labels: Object.keys(auditData.seo.status_code_breakdown),
+    datasets: [{ data: Object.values(auditData.seo.status_code_breakdown), backgroundColor: PALETTE }]
+  },
+  options: { plugins: { legend: { position: 'bottom' } } }
+});
+
+const kw = (auditData.keywords && auditData.keywords.top_keywords || []).slice(0, 15);
+new Chart(document.getElementById('chart-keywords'), {
+  type: 'bar',
+  data: {
+    labels: kw.map(k => k.term),
+    datasets: [{ data: kw.map(k => k.count), backgroundColor: '#4F7A5C', borderRadius: 4 }]
+  },
+  options: { indexAxis: 'y', plugins: { legend: { display:false } }, scales: { x: { beginAtZero:true } } }
+});
+
+const EFFORT_X = {Low: 1, Medium: 2, High: 3};
+const IMPACT_Y = {Low: 1, Medium: 2, High: 3};
+const PRIORITY_COLOR = {high: '#B23A34', medium: '#B8862B', low: '#4F7A5C'};
+const actionPlan = auditData.scoring.action_plan || [];
+new Chart(document.getElementById('chart-impact-effort'), {
+  type: 'scatter',
+  data: {
+    datasets: [{
+      data: actionPlan.map(a => ({ x: EFFORT_X[a.effort] || 2, y: IMPACT_Y[a.impact] || 2 })),
+      backgroundColor: actionPlan.map(a => PRIORITY_COLOR[a.priority] || '#8B8378'),
+      pointRadius: 8, pointHoverRadius: 10,
+    }]
+  },
+  options: {
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: (ctx) => actionPlan[ctx.dataIndex].action.slice(0, 70) } },
+    },
+    scales: {
+      x: { min: 0.5, max: 3.5, ticks: { stepSize: 1, callback: (v) => ({1:'Low effort',2:'Medium effort',3:'High effort'})[v] || '' } },
+      y: { min: 0.5, max: 3.5, ticks: { stepSize: 1, callback: (v) => ({1:'Low impact',2:'Medium impact',3:'High impact'})[v] || '' } },
+    },
+  }
+});
+
+const taxonomy = auditData.ia.taxonomy;
+new Chart(document.getElementById('chart-taxonomy'), {
+  type: 'bar',
+  data: { labels: Object.keys(taxonomy), datasets: [{ data: Object.values(taxonomy), backgroundColor: '#C1531F', borderRadius: 4 }] },
+  options: { indexAxis: 'y', plugins: { legend: { display:false } }, scales: { x: { beginAtZero:true } } }
+});
+
+function renderTree(node, container) {
+  const ul = document.createElement('ul');
+  (node.children || []).sort((a,b)=>b.count-a.count).slice(0,60).forEach(child => {
+    const li = document.createElement('li');
+    li.innerHTML = `${child.name} <span class="node-count">(${child.count})</span>`;
+    if (child.children && child.children.length) renderTree(child, li);
+    ul.appendChild(li);
+  });
+  container.appendChild(ul);
+}
+renderTree(auditData.ia.hierarchy_tree, document.getElementById('hierarchy-tree'));
+
+const pages = Object.values(auditData.pages);
+function flagsFor(p) {
+  const f = [];
+  if (p.is_thin_content) f.push('<span class="tag warn">thin</span>');
+  if (p.is_duplicate_of) f.push('<span class="tag bad">dup</span>');
+  if (p.images_missing_alt) f.push('<span class="tag warn">alt</span>');
+  if (!p.has_schema_org) f.push('<span class="tag muted">no-schema</span>');
+  if (p.error) f.push('<span class="tag bad">' + p.error + '</span>');
+  return f.join(' ');
+}
+let sortKey = 'click_depth', sortDir = 1;
+function renderTable() {
+  const filterVal = document.getElementById('table-filter').value.toLowerCase();
+  let rows = pages.filter(p => (p.url + ' ' + (p.title||'')).toLowerCase().includes(filterVal));
+  rows.sort((a,b) => {
+    const av = a[sortKey] ?? -1, bv = b[sortKey] ?? -1;
+    if (av < bv) return -1*sortDir;
+    if (av > bv) return 1*sortDir;
+    return 0;
+  });
+  const body = document.getElementById('inventory-body');
+  body.innerHTML = rows.slice(0, 500).map(p => `
+    <tr>
+      <td class="url-cell">${p.url}</td>
+      <td>${p.status_code ?? '—'}</td>
+      <td>${(p.title||'').slice(0,60)}</td>
+      <td>${p.word_count}</td>
+      <td>${p.path_depth}</td>
+      <td>${p.click_depth ?? '—'}</td>
+      <td>${flagsFor(p)}</td>
+    </tr>
+  `).join('');
+}
+document.querySelectorAll('#inventory-table th').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.key;
+    sortDir = (sortKey === key) ? -sortDir : 1;
+    sortKey = key;
+    renderTable();
+  });
+});
+document.getElementById('table-filter').addEventListener('input', renderTable);
+renderTable();
+
+(function() {
+  const canvas = document.getElementById('link-graph');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cap = {{ graph_cap }};
+
+  const inbound = {};
+  (auditData.link_edges || []).forEach(([s,t]) => { inbound[t] = (inbound[t]||0) + 1; });
+  const allUrls = Object.keys(auditData.pages);
+  const topUrls = allUrls.sort((a,b) => (inbound[b]||0) - (inbound[a]||0)).slice(0, cap);
+  const urlSet = new Set(topUrls);
+  const nodes = topUrls.map((url) => ({
+    id: url,
+    x: W/2 + (Math.random()-0.5)*W*0.8,
+    y: H/2 + (Math.random()-0.5)*H*0.8,
+    vx: 0, vy: 0,
+    r: 3 + Math.min(10, Math.sqrt(inbound[url]||1)*2)
+  }));
+  const nodeIndex = {}; nodes.forEach((n,i)=>nodeIndex[n.id]=i);
+  const edges = (auditData.link_edges || [])
+    .filter(([s,t]) => urlSet.has(s) && urlSet.has(t) && s !== t)
+    .slice(0, 2000)
+    .map(([s,t]) => [nodeIndex[s], nodeIndex[t]]);
+
+  function step() {
+    for (let i=0;i<nodes.length;i++) {
+      for (let j=i+1;j<nodes.length;j++) {
+        const a = nodes[i], b = nodes[j];
+        let dx = a.x-b.x, dy = a.y-b.y;
+        let d2 = dx*dx+dy*dy || 0.01;
+        if (d2 < 14000) {
+          const f = 60 / d2;
+          a.vx += dx*f; a.vy += dy*f;
+          b.vx -= dx*f; b.vy -= dy*f;
+        }
+      }
+    }
+    edges.forEach(([i,j]) => {
+      const a = nodes[i], b = nodes[j];
+      const dx = b.x-a.x, dy = b.y-a.y;
+      const dist = Math.sqrt(dx*dx+dy*dy) || 1;
+      const f = (dist - 70) * 0.006;
+      a.vx += dx*f; a.vy += dy*f;
+      b.vx -= dx*f; b.vy -= dy*f;
+    });
+    nodes.forEach(n => {
+      n.vx *= 0.85; n.vy *= 0.85;
+      n.x += n.vx; n.y += n.vy;
+      n.x = Math.max(10, Math.min(W-10, n.x));
+      n.y = Math.max(10, Math.min(H-10, n.y));
+    });
+  }
+
+  let dragging = null;
+  canvas.addEventListener('mousedown', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX-rect.left) * (W/rect.width), my = (e.clientY-rect.top) * (H/rect.height);
+    let best = null, bestD = 400;
+    nodes.forEach(n => { const d = (n.x-mx)**2 + (n.y-my)**2; if (d < bestD) { bestD = d; best = n; } });
+    dragging = best;
+  });
+  canvas.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    dragging.x = (e.clientX-rect.left) * (W/rect.width);
+    dragging.y = (e.clientY-rect.top) * (H/rect.height);
+    dragging.vx = 0; dragging.vy = 0;
+  });
+  window.addEventListener('mouseup', () => dragging = null);
+
+  function draw() {
+    ctx.clearRect(0,0,W,H);
+    ctx.strokeStyle = 'rgba(193,83,31,0.16)';
+    edges.forEach(([i,j]) => {
+      const a = nodes[i], b = nodes[j];
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    });
+    nodes.forEach(n => {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI*2);
+      ctx.fillStyle = n === dragging ? '#B23A34' : '#C1531F';
+      ctx.fill();
+    });
+  }
+
+  let ticks = 0;
+  function loop() {
+    step(); draw();
+    ticks++;
+    if (ticks < 260) requestAnimationFrame(loop);
+    else setInterval(() => { step(); draw(); }, 400);
+  }
+  loop();
+})();
+</script>
+
+</body>
+</html>

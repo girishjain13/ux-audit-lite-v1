@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UX &amp; IA Audit Tool</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>{{ inline_css }}</style>
+</head>
+<body>
+
+<div class="masthead">
+  <div class="kicker">Run an Audit</div>
+  <h1>UX &amp; Information Architecture Audit</h1>
+  <div class="sub">Type a URL, run it, and get back a heuristic evaluation — scored, prioritized, and readable in a design review.</div>
+</div>
+
+<div class="wrap">
+
+  <div class="section">
+    <div class="card">
+      <div class="field">
+        <label class="field-label">Target URL</label>
+        <input type="url" id="start_url" placeholder="https://example.com" required>
+      </div>
+
+      <details style="margin-bottom:18px;">
+        <summary style="cursor:pointer; font-size:13px; color:var(--ink-dim); font-weight:600;">Advanced options</summary>
+        <div class="field-row" style="margin-top:14px;">
+          <div class="field">
+            <label class="field-label">Max Pages (cap 5000)</label>
+            <input type="number" id="max_pages" value="5000" min="1" max="5000">
+          </div>
+          <div class="field">
+            <label class="field-label">Max Crawl Depth</label>
+            <input type="number" id="max_depth" value="12" min="1" max="50">
+          </div>
+          <div class="field">
+            <label class="field-label">Concurrency</label>
+            <input type="number" id="concurrency" value="8" min="1" max="30">
+          </div>
+        </div>
+        <div class="field-row">
+          <label class="checkline"><input type="checkbox" id="respect_robots" checked> Respect robots.txt</label>
+          <label class="checkline"><input type="checkbox" id="use_sitemap" checked> Seed from sitemap.xml</label>
+          <label class="checkline"><input type="checkbox" id="include_subdomains"> Include subdomains</label>
+        </div>
+        <div class="field-row" style="margin-top:10px;">
+          <label class="checkline"><input type="checkbox" id="check_external_links"> Spot-check external links for broken (4xx/5xx) targets</label>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label class="field-label">Custom User-Agent (optional)</label>
+          <input type="text" id="custom_user_agent" placeholder="e.g. AcmeCorp-InternalUXAudit/1.0 (contact: security@acme.com)">
+          <p class="small-dim" style="margin-top:6px;">Only for a site you're authorized to audit whose WAF blocks the default identifier — have that site's security team allowlist whatever you put here. HTTP Basic Auth credentials for password-protected UAT sites are set as repo secrets, not here — see DEPLOY.md.</p>
+        </div>
+      </details>
+
+      <details open style="margin-bottom:18px;">
+        <summary style="cursor:pointer; font-size:13px; color:var(--ink-dim); font-weight:600;">GitHub access (required to start a run)</summary>
+        <div style="margin-top:14px;">
+          <p class="small-dim" style="margin-bottom:12px;">
+            Running an audit from this page triggers a GitHub Actions workflow in this repo, which needs a token with permission to do that.
+            <a href="https://github.com/settings/tokens?type=beta" target="_blank">Create a fine-grained personal access token</a>
+            scoped to <b>only this repository</b>, with <b>Actions: Read and write</b> permission — nothing else. It's sent directly from your
+            browser to GitHub over HTTPS and isn't stored anywhere by this page unless you check "remember" below.
+          </p>
+          <div class="field">
+            <label class="field-label">Personal Access Token</label>
+            <input type="password" id="pat" placeholder="github_pat_...">
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label">Repo owner</label>
+              <input type="text" id="repo_owner" placeholder="auto-detected">
+            </div>
+            <div class="field">
+              <label class="field-label">Repo name</label>
+              <input type="text" id="repo_name" placeholder="auto-detected">
+            </div>
+            <div class="field">
+              <label class="field-label">Branch</label>
+              <input type="text" id="repo_branch" value="main">
+            </div>
+          </div>
+          <label class="checkline"><input type="checkbox" id="remember_pat"> Remember token in this browser tab only (cleared when you close it)</label>
+        </div>
+      </details>
+
+      <button class="btn" id="start-btn">Run Audit →</button>
+      <div id="form-error" class="small-dim" style="color:var(--coral); margin-top:10px;"></div>
+    </div>
+  </div>
+
+  <div class="section" id="progress-section" style="display:none;">
+    <div class="section-head"><h2>Run status</h2></div>
+    <div class="card">
+      <span class="badge-status" id="status-badge">STARTING</span>
+      <p class="small-dim" style="margin-top:14px;" id="status-detail">Triggering the workflow…</p>
+      <div style="margin-top:16px;">
+        <a class="btn secondary" id="actions-link" target="_blank" style="display:none;">View run logs on GitHub →</a>
+        <a class="btn" id="view-report-btn" style="display:none;" href="report.html">View Report →</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head"><h2>Most recent report</h2></div>
+    <div class="card">
+      <p class="small-dim">If you've already run an audit here before, it's at the link below — this page itself never expires or gets overwritten by a run; only the report does.</p>
+      <a class="btn secondary" href="report.html">Open latest report →</a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function detectRepo() {
+  // https://<owner>.github.io/<repo>/ — works for the default Pages URL.
+  // Falls back to manual entry (fields below) for custom domains.
+  const host = window.location.hostname;
+  const path = window.location.pathname.split('/').filter(Boolean);
+  if (host.endsWith('.github.io')) {
+    return { owner: host.split('.')[0], repo: path[0] || '' };
+  }
+  return { owner: '', repo: '' };
+}
+const detected = detectRepo();
+if (detected.owner) document.getElementById('repo_owner').value = detected.owner;
+if (detected.repo) document.getElementById('repo_name').value = detected.repo;
+
+const rememberedPat = sessionStorage.getItem('audit_pat');
+if (rememberedPat) {
+  document.getElementById('pat').value = rememberedPat;
+  document.getElementById('remember_pat').checked = true;
+}
+
+document.getElementById('start-btn').addEventListener('click', async () => {
+  const errEl = document.getElementById('form-error');
+  errEl.textContent = '';
+
+  const startUrl = document.getElementById('start_url').value.trim();
+  const pat = document.getElementById('pat').value.trim();
+  const owner = document.getElementById('repo_owner').value.trim() || detected.owner;
+  const repo = document.getElementById('repo_name').value.trim() || detected.repo;
+  const branch = document.getElementById('repo_branch').value.trim() || 'main';
+
+  if (!startUrl) { errEl.textContent = 'Enter a URL to audit.'; return; }
+  if (!pat) { errEl.textContent = 'A personal access token is required to trigger the workflow.'; return; }
+  if (!owner || !repo) { errEl.textContent = "Couldn't detect the repo — fill in owner/name under GitHub access."; return; }
+
+  if (document.getElementById('remember_pat').checked) {
+    sessionStorage.setItem('audit_pat', pat);
+  } else {
+    sessionStorage.removeItem('audit_pat');
+  }
+
+  document.getElementById('start-btn').disabled = true;
+  document.getElementById('progress-section').style.display = 'block';
+  document.getElementById('progress-section').scrollIntoView({behavior:'smooth'});
+  setStatus('STARTING', 'Triggering the workflow…');
+
+  const dispatchTime = new Date();
+  try {
+    const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/workflows/audit.yml/dispatches`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${pat}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ref: branch,
+        inputs: {
+          start_url: startUrl,
+          max_pages: document.getElementById('max_pages').value,
+          max_depth: document.getElementById('max_depth').value,
+          concurrency: document.getElementById('concurrency').value,
+          respect_robots: document.getElementById('respect_robots').checked,
+          use_sitemap: document.getElementById('use_sitemap').checked,
+          include_subdomains: document.getElementById('include_subdomains').checked,
+          check_external_links: document.getElementById('check_external_links').checked,
+          custom_user_agent: document.getElementById('custom_user_agent').value,
+        },
+      }),
+    });
+    if (resp.status !== 204) {
+      const body = await resp.text();
+      throw new Error(`GitHub API returned ${resp.status}: ${body.slice(0,200)}`);
+    }
+  } catch (e) {
+    setStatus('ERROR', 'Failed to trigger the workflow: ' + e.message);
+    document.getElementById('start-btn').disabled = false;
+    return;
+  }
+
+  setStatus('QUEUED', 'Workflow triggered — waiting for GitHub to pick it up…');
+  pollRun(owner, repo, pat, dispatchTime);
+});
+
+function setStatus(label, detail) {
+  document.getElementById('status-badge').textContent = label;
+  document.getElementById('status-detail').textContent = detail;
+}
+
+async function pollRun(owner, repo, pat, dispatchTime) {
+  const headers = pat ? { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' } : {};
+  let runUrl = null;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    await new Promise(r => setTimeout(r, 4000));
+    try {
+      const resp = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/actions/workflows/audit.yml/runs?event=workflow_dispatch&per_page=5`,
+        { headers }
+      );
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const run = (data.workflow_runs || []).find(r => new Date(r.created_at) >= new Date(dispatchTime.getTime() - 10000));
+      if (!run) { setStatus('QUEUED', 'Waiting for the run to appear on GitHub…'); continue; }
+
+      runUrl = run.html_url;
+      const link = document.getElementById('actions-link');
+      link.href = runUrl; link.style.display = 'inline-block';
+
+      if (run.status !== 'completed') {
+        setStatus(run.status.toUpperCase(), `Crawling and analyzing… (${run.status})`);
+        continue;
+      }
+      if (run.conclusion === 'success') {
+        setStatus('DONE', 'Finished — GitHub Pages may take a minute to publish the new report.');
+        document.getElementById('view-report-btn').style.display = 'inline-block';
+        document.getElementById('view-report-btn').href = 'report.html?t=' + Date.now();
+        document.getElementById('start-btn').disabled = false;
+        return;
+      } else {
+        setStatus('FAILED', `The run finished with: ${run.conclusion}. Check the logs.`);
+        document.getElementById('start-btn').disabled = false;
+        return;
+      }
+    } catch (e) {
+      // transient network hiccup — just try again next tick
+    }
+  }
+  setStatus('UNKNOWN', 'Stopped watching after a few minutes — check the run logs on GitHub directly.');
+  document.getElementById('start-btn').disabled = false;
+}
+</script>
+
+</body>
+</html>

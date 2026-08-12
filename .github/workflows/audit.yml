@@ -1,0 +1,107 @@
+name: Run audit and publish to GitHub Pages
+
+# Manually trigger this from the Actions tab, filling in the target URL.
+# The crawl runs on GitHub's runner (a real Python VM — no browser CORS
+# limits), and the resulting static report is published via GitHub Pages.
+#
+# This workflow deliberately does NOT include a Playwright browser install
+# step or a mid-job git-commit step — both were tried in an earlier version
+# of this project and repeatedly caused the Pages deploy to fail or hang.
+# JS rendering and run-history trend tracking are only in the sibling
+# Streamlit/Docker build now, which doesn't share this deploy pipeline.
+on:
+  workflow_dispatch:
+    inputs:
+      start_url:
+        description: "Site to audit (must include http:// or https://)"
+        required: true
+      max_pages:
+        description: "Max pages to crawl (cap 5000)"
+        required: false
+        default: "5000"
+      max_depth:
+        description: "Max crawl depth"
+        required: false
+        default: "12"
+      concurrency:
+        description: "Concurrent requests"
+        required: false
+        default: "8"
+      respect_robots:
+        description: "Respect robots.txt"
+        type: boolean
+        default: true
+      use_sitemap:
+        description: "Seed extra URLs from sitemap.xml"
+        type: boolean
+        default: true
+      include_subdomains:
+        description: "Include subdomains as in-scope"
+        type: boolean
+        default: false
+      check_external_links:
+        description: "Spot-check a sample of external links for broken (4xx/5xx) targets"
+        type: boolean
+        default: false
+      custom_user_agent:
+        description: "Optional custom User-Agent (only for sites you're authorized to audit whose WAF blocks the default identifier)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  audit-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run audit
+        env:
+          START_URL: ${{ inputs.start_url }}
+          MAX_PAGES: ${{ inputs.max_pages }}
+          MAX_DEPTH: ${{ inputs.max_depth }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+          RESPECT_ROBOTS: ${{ inputs.respect_robots }}
+          USE_SITEMAP: ${{ inputs.use_sitemap }}
+          INCLUDE_SUBDOMAINS: ${{ inputs.include_subdomains }}
+          CHECK_EXTERNAL_LINKS: ${{ inputs.check_external_links }}
+          # Optional secret — AI summary is skipped without it.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # UAT/staging Basic Auth credentials, if this repo has them set as
+          # secrets — deliberately NOT a workflow_dispatch input, since a
+          # public repo's run inputs (unlike secrets) are visible to anyone
+          # who can see the Actions run. Set once in Settings > Secrets,
+          # covers whichever one UAT site you're auditing via this path.
+          BASIC_AUTH_USERNAME: ${{ secrets.BASIC_AUTH_USERNAME }}
+          BASIC_AUTH_PASSWORD: ${{ secrets.BASIC_AUTH_PASSWORD }}
+          CUSTOM_USER_AGENT: ${{ inputs.custom_user_agent }}
+        run: python run_audit_cli.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: audit-and-build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
