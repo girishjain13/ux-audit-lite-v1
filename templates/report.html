@@ -39,6 +39,15 @@
   </div>
   {% endif %}
 
+  {% if data.truncation_notice %}
+  <div class="section">
+    <div class="card" style="border: 2px solid var(--amber); background: rgba(184,134,43,0.06);">
+      <h2 style="font-size:16px; margin:0 0 8px; color: var(--amber);">ℹ Only part of this site was crawled</h2>
+      <p style="margin:0; color: var(--ink);">{{ data.truncation_notice }}</p>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="section">
     <div class="summary-card">
       <h2 style="font-size:18px; margin-bottom:8px;">In plain terms</h2>

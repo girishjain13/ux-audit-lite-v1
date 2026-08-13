@@ -77,27 +77,48 @@ async def run_audit(
     ia_results = ia.run_ia_analysis(pages, edges, start_url_resolved)
 
     # Distinct from the above: a crawl can fetch plenty of real 200-status
-    # pages yet still extract zero usable internal links — the classic
-    # signature of a JS-rendered/SPA site with no server-rendered <a href>
-    # navigation (this build has no JS rendering; see README's known
-    # limitations). When that happens, every page looks orphaned and the
-    # link graph is empty, which is a specific, useful thing to say
-    # out loud rather than leaving the reader to guess why the numbers
-    # look broken.
+    # pages yet still end up with almost everything showing as orphaned.
+    # The clearest version of this is zero internal links extracted at all
+    # (classic signature of a JS-rendered/SPA site with no server-rendered
+    # <a href> navigation — this build doesn't run JS). But it can also
+    # happen with a *nonzero* edge count on a real, successfully-fetched
+    # site: e.g. most of what got crawled came from sitemap.xml rather than
+    # from actually following links (so the graph has few real edges to
+    # begin with), or the site's real navigation uses a URL form (a
+    # different subdomain, a language prefix, protocol-relative links,
+    # etc.) that isn't being recognized as "internal" and so isn't being
+    # counted as a link at all. Whatever the exact mechanism, "the vast
+    # majority of a mostly-successful crawl is orphaned" is itself a
+    # specific, checkable signal worth calling out plainly rather than
+    # requiring the edge count to be exactly zero to say anything.
+    orphan_ratio = (ia_results["orphan_page_count"] / total_pages) if total_pages else 0.0
     if (
         crawl_warning is None
         and pages_with_real_data >= 3
-        and ia_results["graph_edge_count"] == 0
-        and ia_results["orphan_page_count"] >= max(3, int(0.8 * total_pages))
+        and total_pages >= 10
+        and orphan_ratio >= 0.90
     ):
-        crawl_warning = (
-            f"{pages_with_real_data} page(s) were fetched successfully, but zero internal links were found "
-            f"in the crawled HTML — so essentially every page ({ia_results['orphan_page_count']} of "
-            f"{total_pages}) shows up as orphaned. This usually means navigation is rendered client-side by "
-            f"JavaScript (this build doesn't execute JS — see the project's known limitations) rather than "
-            f"real &lt;a href&gt; links in the server-sent HTML. Orphan/click-depth/internal-linking results "
-            f"below aren't reliable for this crawl."
-        )
+        if ia_results["graph_edge_count"] == 0:
+            crawl_warning = (
+                f"{pages_with_real_data} page(s) were fetched successfully, but zero internal links were "
+                f"found in the crawled HTML — so essentially every page ({ia_results['orphan_page_count']} "
+                f"of {total_pages}) shows up as orphaned. This usually means navigation is rendered "
+                f"client-side by JavaScript (this build doesn't execute JS — see the project's known "
+                f"limitations) rather than real &lt;a href&gt; links in the server-sent HTML. "
+                f"Orphan/click-depth/internal-linking results below aren't reliable for this crawl."
+            )
+        else:
+            crawl_warning = (
+                f"{round(orphan_ratio * 100, 1)}% of pages ({ia_results['orphan_page_count']} of "
+                f"{total_pages}) show up as orphaned despite {pages_with_real_data} pages fetching "
+                f"successfully — {ia_results['graph_edge_count']} internal link(s) were found in total, "
+                f"which isn't enough to connect a site this size. Common causes: most of what's counted "
+                f"as \"crawled\" came from sitemap.xml rather than from actually following links on the "
+                f"page (a real but very sparse link structure), or real internal links use a URL form — "
+                f"a different subdomain, a language prefix, protocol-relative links — that this crawler "
+                f"isn't recognizing as internal and so isn't counting. Worth spot-checking a few real "
+                f"pages' actual HTML before trusting the orphan numbers below at face value."
+            )
 
     content_results = content.run_content_analysis(pages)
     a11y_results = accessibility.run_accessibility_analysis(pages)
@@ -128,8 +149,35 @@ async def run_audit(
     progress.status = AuditStatus.DONE
     progress.finished_at = datetime.now(timezone.utc)
 
+    # A truncated crawl (the site has more pages than we were allowed to
+    # visit) is a normal, expected outcome, not a problem to warn about —
+    # but silently reporting on the first N pages as if that were the whole
+    # site would be misleading, especially since 5000 is a hard ceiling in
+    # this build (see run_audit_cli.py) regardless of what's requested.
+    # There's deliberately no automatic multi-run continuation here: this
+    # build's whole design avoids any mid-job git commit/push (see the
+    # project history — that's what caused the original Pages-deploy-hang
+    # bug), and chaining runs to cover a site in slices would need some
+    # form of state carried between separate, independent workflow runs.
+    # For now this is a plain, honest disclosure rather than a promise of
+    # automatic continuation the pipeline doesn't actually do.
+    crawl_truncated = crawler.queue_remaining_at_stop > 0
+    truncation_notice = None
+    if crawl_truncated:
+        truncation_notice = (
+            f"This crawl stopped at the {config.max_pages}-page limit with at least "
+            f"{crawler.queue_remaining_at_stop} more page(s) still discovered and waiting to be crawled — "
+            f"this site has more pages than fit in one run. Everything below reflects only the first "
+            f"{len(pages)} pages reached, not the whole site. 5000 pages is also a hard per-run ceiling in "
+            f"this build, so a single run can't cover a larger site no matter what's requested — there's no "
+            f"automatic follow-up run that picks up where this one left off. To audit a specific section "
+            f"of a large site instead of the whole thing, point Start URL at a subdirectory (e.g. "
+            f"a specific city/category path) and run separately for each."
+        )
+
     audit_data = {
         "crawl_warning": crawl_warning,
+        "truncation_notice": truncation_notice,
         "meta": {
             "start_url": config.start_url,
             "pages_crawled": len(pages),

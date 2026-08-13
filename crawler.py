@@ -126,6 +126,10 @@ class AsyncCrawler:
         self.external_link_targets: dict = {}  # url -> set of internal pages that link to it
         # website feature matrix (see analyzers/feature_matrix.py)
         self.feature_hits: dict = {}  # feature id -> set of page urls
+        # set at the end of crawl() — see there for why these matter for
+        # detecting a truncated (site bigger than max_pages) crawl
+        self.queue_remaining_at_stop = 0
+        self.total_urls_discovered = 0
 
     async def crawl(self, on_progress: Optional[Callable[[], Awaitable[None]]] = None):
         cfg = self.config
@@ -196,6 +200,15 @@ class AsyncCrawler:
                 if not batch:
                     break
                 await asyncio.gather(*batch)
+
+            # Whatever's still waiting in the queue once we stop is real
+            # evidence the site has more pages than max_pages allowed us to
+            # reach — as opposed to genuinely running out of new URLs to
+            # follow. Surfaced later as a truncation notice rather than
+            # silently reporting on an incomplete slice of the site as if
+            # it were the whole thing.
+            self.queue_remaining_at_stop = len(queue)
+            self.total_urls_discovered = len(self._seen)
 
         self.progress.status = AuditStatus.ANALYZING
         self.edges = self._resolve_edges(self.edges)
