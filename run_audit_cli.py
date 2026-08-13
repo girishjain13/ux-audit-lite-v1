@@ -140,6 +140,20 @@ async def main() -> int:
         '<link rel="stylesheet" href="/static/style.css">',
         f"<style>\n{style_css}\n</style>",
     )
+    # Chart.js was previously loaded from a CDN (cdnjs.cloudflare.com). That
+    # meant the report's charts silently failed to render — with every chart
+    # section after the first one going blank too, since one uncaught
+    # "Chart is not defined" error halts the rest of the inline <script>
+    # block — for anyone viewing the report from a network that blocks
+    # third-party CDNs (common on corporate networks) or has an ad-blocker
+    # treating cdnjs as a tracker. Inlining it the same way as the CSS above
+    # makes the report a single self-contained file with no runtime
+    # dependency on any external network request at all.
+    chartjs = (Path(__file__).parent / "static" / "chart.umd.js").read_text(encoding="utf-8")
+    html = html.replace(
+        '<script src="/static/chart.umd.js"></script>',
+        f"<script>\n{chartjs}\n</script>",
+    )
     html = html.replace("/api/audits/latest/export/json", "exports/audit.json")
     html = html.replace("/api/audits/latest/export/csv", "exports/audit.csv")
     html = html.replace("/api/audits/latest/export/xlsx", "exports/audit.xlsx")
