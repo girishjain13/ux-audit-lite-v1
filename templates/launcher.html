@@ -269,8 +269,18 @@ function showToast(success, message) {
 async function pollRun(owner, repo, pat, dispatchTime) {
   const headers = pat ? { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' } : {};
   let runUrl = null;
-  for (let attempt = 0; attempt < 60; attempt++) {
-    await new Promise(r => setTimeout(r, 4000));
+  // A large crawl (thousands of pages) can legitimately take 10-20+
+  // minutes. Polling every 4s for the full window would mean ~300+ API
+  // calls, which is wasteful and unnecessary once a run is clearly still
+  // in progress — so this backs off to a slower cadence after the first
+  // couple of minutes, while still watching for up to 30 minutes total
+  // before giving up and telling the person to check GitHub directly.
+  const maxWaitMs = 30 * 60 * 1000;
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWaitMs) {
+    const elapsed = Date.now() - startTime;
+    const delay = elapsed < 2 * 60 * 1000 ? 4000 : 15000;
+    await new Promise(r => setTimeout(r, delay));
     try {
       const resp = await fetch(
         `https://api.github.com/repos/${owner}/${repo}/actions/workflows/audit.yml/runs?event=workflow_dispatch&per_page=5`,
@@ -286,7 +296,7 @@ async function pollRun(owner, repo, pat, dispatchTime) {
       link.href = runUrl; link.style.display = 'inline-block';
 
       if (run.status !== 'completed') {
-        setStatus(run.status.toUpperCase(), `Crawling and analyzing… (${run.status})`);
+        setStatus(run.status.toUpperCase(), `Crawling and analyzing… (${run.status}, ${Math.round(elapsed / 1000)}s so far)`);
         continue;
       }
       if (run.conclusion === 'success') {
@@ -306,9 +316,9 @@ async function pollRun(owner, repo, pat, dispatchTime) {
       // transient network hiccup — just try again next tick
     }
   }
-  setStatus('UNKNOWN', 'Stopped watching after a few minutes — check the run logs on GitHub directly.');
+  setStatus('UNKNOWN', 'Stopped watching after 30 minutes — check the run logs on GitHub directly.');
   document.getElementById('start-btn').disabled = false;
-  notifyAuditFinished(false, 'Lost track of the run after a few minutes — check GitHub Actions directly.');
+  notifyAuditFinished(false, 'Lost track of the run after 30 minutes — check GitHub Actions directly.');
 }
 </script>
 
