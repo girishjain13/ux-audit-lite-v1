@@ -244,6 +244,41 @@ function notifyAuditFinished(success, message) {
   showToast(success, message);
 }
 
+// Distinct from notifyAuditFinished: fires once, the moment a queued run
+// actually starts executing — worth calling out on its own now that runs
+// can wait behind each other in a FIFO queue (see audit.yml) rather than
+// starting immediately, so "your scan is running now" is real information,
+// not a formality.
+function notifyScanStarted() {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    try {
+      new Notification('Audit started', {
+        body: 'Your scan just started running — this can take a few minutes for a large site.',
+        tag: 'ux-audit-run-started',
+      });
+    } catch (e) { /* toast below still covers it */ }
+  }
+  let toast = document.getElementById('audit-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'audit-toast';
+    toast.style.cssText = `
+      position: fixed; bottom: 24px; right: 24px; max-width: 360px;
+      padding: 14px 18px; border-radius: var(--radius-sm, 8px);
+      font-family: Inter, sans-serif; font-size: 14px; line-height: 1.4;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18); z-index: 9999;
+      cursor: pointer; transition: opacity 0.3s;
+    `;
+    document.body.appendChild(toast);
+    toast.addEventListener('click', () => { toast.style.display = 'none'; });
+  }
+  toast.style.background = '#DCE7EF';
+  toast.style.color = '#2b2b28';
+  toast.textContent = '▶ Your scan just started running (click to dismiss)';
+  toast.style.display = 'block';
+  toast.style.opacity = '1';
+}
+
 function showToast(success, message) {
   let toast = document.getElementById('audit-toast');
   if (!toast) {
@@ -269,6 +304,13 @@ function showToast(success, message) {
 async function pollRun(owner, repo, pat, dispatchTime) {
   const headers = pat ? { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' } : {};
   let runUrl = null;
+  // Runs now queue FIFO behind each other on GitHub's side (see audit.yml —
+  // cancel-in-progress: false) instead of a new one cancelling whatever's
+  // still running. That means a run can sit in "queued" for a while if
+  // someone else's is ahead of it, so a distinct "your scan just started"
+  // notification (fired once, on the queued -> in_progress transition)
+  // matters more here than it would if everything ran immediately.
+  let notifiedStarted = false;
   // A large crawl (thousands of pages) can legitimately take 10-20+
   // minutes. Polling every 4s for the full window would mean ~300+ API
   // calls, which is wasteful and unnecessary once a run is clearly still
@@ -295,8 +337,16 @@ async function pollRun(owner, repo, pat, dispatchTime) {
       const link = document.getElementById('actions-link');
       link.href = runUrl; link.style.display = 'inline-block';
 
+      if (run.status === 'in_progress' && !notifiedStarted) {
+        notifiedStarted = true;
+        notifyScanStarted();
+      }
+
       if (run.status !== 'completed') {
-        setStatus(run.status.toUpperCase(), `Crawling and analyzing… (${run.status}, ${Math.round(elapsed / 1000)}s so far)`);
+        const waitLabel = run.status === 'queued'
+          ? `Queued behind another run — waiting for it to finish (${Math.round(elapsed / 1000)}s so far)`
+          : `Crawling and analyzing… (${run.status}, ${Math.round(elapsed / 1000)}s so far)`;
+        setStatus(run.status.toUpperCase(), waitLabel);
         continue;
       }
       if (run.conclusion === 'success') {

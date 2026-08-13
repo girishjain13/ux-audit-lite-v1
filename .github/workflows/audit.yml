@@ -59,7 +59,15 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: true
+  # false (not the GitHub Pages boilerplate default of true) is the whole
+  # point here: with true, triggering a new run CANCELS whatever's still
+  # running in this group — so if two people (or the same person twice)
+  # start an audit close together, only the newest survives and the
+  # other shows up as a failed/cancelled run. With false, GitHub instead
+  # queues additional runs and starts each one in the order it was
+  # triggered (FIFO) once the current one finishes — nothing gets
+  # cancelled, everyone's run eventually runs.
+  cancel-in-progress: false
 
 jobs:
   audit-and-build:
