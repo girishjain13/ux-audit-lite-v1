@@ -89,6 +89,10 @@ async def main() -> int:
     # ANTHROPIC_API_KEY; this is the fallback/complement that works without it.
     custom_personas_raw = os.environ.get("CUSTOM_PERSONAS", "").strip()
     custom_personas = parse_custom_personas(custom_personas_raw) if custom_personas_raw else []
+    include_url_patterns = [p.strip() for p in os.environ.get("INCLUDE_URL_PATTERNS", "").split(",") if p.strip()]
+    exclude_url_patterns = [p.strip() for p in os.environ.get("EXCLUDE_URL_PATTERNS", "").split(",") if p.strip()]
+    client_stated_raw = os.environ.get("CLIENT_STATED_PAGE_COUNT", "").strip()
+    client_stated_page_count = int(client_stated_raw) if client_stated_raw.isdigit() else None
 
     config = CrawlConfig(
         start_url=start_url,
@@ -103,6 +107,9 @@ async def main() -> int:
         basic_auth_password=basic_auth_password,
         verify_ssl=verify_ssl,
         custom_user_agent=custom_user_agent,
+        include_url_patterns=include_url_patterns,
+        exclude_url_patterns=exclude_url_patterns,
+        client_stated_page_count=client_stated_page_count,
     )
     progress = CrawlProgress()
 

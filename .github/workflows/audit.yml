@@ -51,6 +51,18 @@ on:
         description: "Optional custom persona(s) for journey mapping — see DEPLOY.md for the format. No AI key needed, purely keyword-matched."
         required: false
         default: ""
+      include_url_patterns:
+        description: "Only crawl URLs containing at least one of these (comma-separated plain substrings, e.g. '/blog/,/products/'). Leave blank for no restriction."
+        required: false
+        default: ""
+      exclude_url_patterns:
+        description: "Never crawl URLs containing any of these (comma-separated plain substrings, e.g. '/admin/,/checkout/'). Leave blank to exclude nothing."
+        required: false
+        default: ""
+      client_stated_page_count:
+        description: "Optional: what the client said the page count is, for a variance report against what's actually crawled. Leave blank to skip."
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -103,6 +115,9 @@ jobs:
           BASIC_AUTH_PASSWORD: ${{ secrets.BASIC_AUTH_PASSWORD }}
           CUSTOM_USER_AGENT: ${{ inputs.custom_user_agent }}
           CUSTOM_PERSONAS: ${{ inputs.custom_personas }}
+          INCLUDE_URL_PATTERNS: ${{ inputs.include_url_patterns }}
+          EXCLUDE_URL_PATTERNS: ${{ inputs.exclude_url_patterns }}
+          CLIENT_STATED_PAGE_COUNT: ${{ inputs.client_stated_page_count }}
         run: python run_audit_cli.py
 
       - uses: actions/upload-pages-artifact@v3

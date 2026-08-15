@@ -45,13 +45,27 @@ def run_accessibility_analysis(pages: dict[str, PageRecord]) -> dict:
 
     recommendations = []
     if total_missing_alt:
-        recommendations.append(f"Add descriptive alt text to {total_missing_alt} image(s) across the site.")
+        recommendations.append({
+            "text": f"Add descriptive alt text to {total_missing_alt} image(s) across the site.",
+            "effort_bucket": "config", "personas": ["ux"],
+        })
     if pages_missing_lang:
-        recommendations.append(f"{len(pages_missing_lang)} page(s) are missing a lang attribute — add lang to <html> for screen readers.")
+        recommendations.append({
+            "text": f"{len(pages_missing_lang)} page(s) are missing a lang attribute — add lang to <html> for screen readers.",
+            "effort_bucket": "config", "personas": ["ux"],
+        })
     if pages_no_landmarks:
-        recommendations.append(f"{len(pages_no_landmarks)} page(s) have no ARIA landmark roles (header/nav/main/footer) — add these for assistive-tech navigation.")
+        recommendations.append({
+            "text": f"{len(pages_no_landmarks)} page(s) have no ARIA landmark roles (header/nav/main/footer) — add these for assistive-tech navigation.",
+            # landmarks live in the shared page template/chrome, not per-page
+            # content, so this is a template edit rather than a content fix.
+            "effort_bucket": "custom_dev", "personas": ["ux"],
+        })
     if total_inputs_missing_label:
-        recommendations.append(f"{total_inputs_missing_label} form input(s) lack an accessible label.")
+        recommendations.append({
+            "text": f"{total_inputs_missing_label} form input(s) lack an accessible label.",
+            "effort_bucket": "config", "personas": ["ux"],
+        })
 
     return {
         "pages_analyzed": pages_analyzed,

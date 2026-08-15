@@ -55,6 +55,40 @@ class PageRecord:
     is_thin_content: bool = False
     is_duplicate_of: Optional[str] = None
 
+    # A structural fingerprint of the page's HTML skeleton (tag/class shape,
+    # with repeated sibling blocks collapsed so a list of 5 products and a
+    # list of 50 look the same) — used to cluster pages into "templates"
+    # rather than by URL pattern or title, which can be misleading. See
+    # analyzers/templates.py.
+    template_fingerprint: str = ""
+
+    # URL structure & redirect complexity (see analyzers/url_health.py) —
+    # how many hops it took to reach this page's final URL, and the actual
+    # hop-by-hop path, so a chain vs. a genuine loop can be told apart.
+    redirect_chain_length: int = 0
+    redirect_chain: list = field(default_factory=list)
+
+    # Content freshness (see analyzers/freshness.py) — from the HTTP
+    # Last-Modified header when the server sends one, falling back to
+    # sitemap.xml's <lastmod> for this URL when it doesn't. Either way
+    # it's a string as received (HTTP-date or ISO-date format) — parsing
+    # happens in the analyzer, not here, since a missing/malformed date
+    # is itself useful information (not every CMS exposes this at all).
+    last_modified: Optional[str] = None
+
+    # 0-100 Flesch Reading Ease (see crawler.py's _flesch_reading_ease) —
+    # only set for pages with enough words to make the estimate meaningful.
+    readability_score: Optional[float] = None
+
+    # hreflang alternates declared on this page: {locale_code: url} — feeds
+    # the locale coverage matrix in analyzers/locale.py
+    hreflang_links: dict = field(default_factory=dict)
+
+    # Risk flags (see analyzers/risk.py)
+    has_pii_form: bool = False
+    has_mixed_content: bool = False
+    has_noindex: bool = False
+
 
 @dataclass
 class CrawlProgress:

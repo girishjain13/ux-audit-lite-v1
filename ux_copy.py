@@ -34,6 +34,16 @@ BAND_COPY = {
     "Critical": "This needs attention soon — issues at this level are likely costing conversions, comprehension, or accessibility compliance.",
 }
 
+# How each action-plan item's effort_bucket should read to someone scoping
+# a SOW — directional labels, same honesty framing as the rest of this
+# file: what a finding like this *usually* requires, not a quote for this
+# specific engagement.
+EFFORT_BUCKET_COPY = {
+    "ootb": {"label": "Out-of-the-box fix", "plain": "Usually a settings/config toggle already available in most CMS or SEO tooling — no new code."},
+    "config": {"label": "Configuration effort", "plain": "A content-editor or admin-level change — no new development, but someone needs to actually go make it."},
+    "custom_dev": {"label": "Custom development", "plain": "Typically requires a template or code change, not just a content/settings edit."},
+}
+
 # Reference points a UX lead would actually cite in a review — not hard
 # pass/fail thresholds, just what's commonly considered healthy.
 BENCHMARKS = {

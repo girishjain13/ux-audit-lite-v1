@@ -47,13 +47,35 @@ def run_seo_analysis(pages: dict[str, PageRecord]) -> dict:
 
     recommendations = []
     if title_issues:
-        recommendations.append(f"{len(title_issues)} page(s) have missing or poorly-sized <title> tags (ideal {TITLE_MIN}-{TITLE_MAX} chars).")
+        recommendations.append({
+            "text": f"{len(title_issues)} page(s) have missing or poorly-sized <title> tags (ideal {TITLE_MIN}-{TITLE_MAX} chars).",
+            "effort_bucket": "config", "personas": ["content"],
+        })
     if description_issues:
-        recommendations.append(f"{len(description_issues)} page(s) have missing or poorly-sized meta descriptions (ideal {DESC_MIN}-{DESC_MAX} chars).")
+        recommendations.append({
+            "text": f"{len(description_issues)} page(s) have missing or poorly-sized meta descriptions (ideal {DESC_MIN}-{DESC_MAX} chars).",
+            "effort_bucket": "config", "personas": ["content"],
+        })
     if canonical_missing:
-        recommendations.append(f"{len(canonical_missing)} page(s) lack a canonical tag — add one to prevent duplicate-content dilution.")
+        recommendations.append({
+            "text": f"{len(canonical_missing)} page(s) lack a canonical tag — add one to prevent duplicate-content dilution.",
+            # most modern CMS/SEO plugins add this automatically once
+            # enabled — usually a settings toggle, not new code.
+            "effort_bucket": "ootb", "personas": ["content", "business"],
+        })
+    if og_missing and len(og_missing) < len(pages):
+        recommendations.append({
+            "text": f"{len(og_missing)} page(s) have no Open Graph tags — link previews on social/Slack/Teams will look generic or broken.",
+            # OG tags are usually one settings panel in the CMS/SEO plugin.
+            "effort_bucket": "ootb", "personas": ["content", "business"],
+        })
     if schema_missing and len(schema_missing) < len(pages):
-        recommendations.append(f"{len(schema_missing)} page(s) have no Schema.org structured data — consider adding for rich results.")
+        recommendations.append({
+            "text": f"{len(schema_missing)} page(s) have no Schema.org structured data — consider adding for rich results.",
+            # structured data usually means new JSON-LD in the template,
+            # not a content-editor-level change.
+            "effort_bucket": "custom_dev", "personas": ["content", "business"],
+        })
 
     return {
         "status_code_breakdown": dict(status_breakdown),

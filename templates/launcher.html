@@ -59,6 +59,22 @@
           <textarea id="custom_personas" rows="5" placeholder="Freelance Designer&#10;Awareness: blog, guide, resource&#10;Consideration: portfolio, case-study, pricing&#10;Decision: contact, quote, hire"></textarea>
           <p class="small-dim" style="margin-top:6px;">One persona per block (blank line between blocks). First line is the persona name; each following line is "Stage: keyword1, keyword2, …" matched against crawled URLs/titles. Purely rule-based — works with or without an ANTHROPIC_API_KEY secret. Shows up in the report's "Inferred User Journey Maps" section alongside the built-in personas.</p>
         </div>
+        <div class="field-row" style="margin-top:10px;">
+          <div class="field">
+            <label class="field-label">Only crawl URLs containing (optional)</label>
+            <input type="text" id="include_url_patterns" placeholder="/blog/, /products/">
+          </div>
+          <div class="field">
+            <label class="field-label">Never crawl URLs containing (optional)</label>
+            <input type="text" id="exclude_url_patterns" placeholder="/admin/, /checkout/">
+          </div>
+        </div>
+        <p class="small-dim" style="margin-top:-4px; margin-bottom:10px;">Comma-separated plain substrings, not regex. Leave both blank to crawl the whole site with no restriction.</p>
+        <div class="field" style="margin-top:10px;">
+          <label class="field-label">Client-stated page count (optional)</label>
+          <input type="number" id="client_stated_page_count" placeholder="e.g. 500">
+          <p class="small-dim" style="margin-top:6px;">If the client told you roughly how many pages the site has, enter it here for a variance report against what's actually crawled.</p>
+        </div>
       </details>
 
       <details open style="margin-bottom:18px;">
@@ -189,6 +205,9 @@ document.getElementById('start-btn').addEventListener('click', async () => {
           check_external_links: document.getElementById('check_external_links').checked,
           custom_user_agent: document.getElementById('custom_user_agent').value,
           custom_personas: document.getElementById('custom_personas').value,
+          include_url_patterns: document.getElementById('include_url_patterns').value,
+          exclude_url_patterns: document.getElementById('exclude_url_patterns').value,
+          client_stated_page_count: document.getElementById('client_stated_page_count').value,
         },
       }),
     });

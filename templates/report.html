@@ -28,10 +28,16 @@
   </div>
 </div>
 
+<div class="audience-tabs no-print" role="tablist" aria-label="View report for">
+  <button class="audience-tab" data-tab="ux" role="tab" aria-selected="true">UX Designer</button>
+  <button class="audience-tab" data-tab="content" role="tab" aria-selected="false">Content Strategist</button>
+  <button class="audience-tab" data-tab="business" role="tab" aria-selected="false">Business Analyst</button>
+</div>
+
 <div class="wrap">
 
   {% if data.crawl_warning %}
-  <div class="section">
+  <div class="section" data-audience="all">
     <div class="card" style="border: 2px solid var(--coral); background: rgba(178,58,52,0.06);">
       <h2 style="font-size:16px; margin:0 0 8px; color: var(--coral);">⚠ This crawl didn't actually reach the site</h2>
       <p style="margin:0; color: var(--ink);">{{ data.crawl_warning }}</p>
@@ -40,7 +46,7 @@
   {% endif %}
 
   {% if data.truncation_notice %}
-  <div class="section">
+  <div class="section" data-audience="all">
     <div class="card" style="border: 2px solid var(--amber); background: rgba(184,134,43,0.06);">
       <h2 style="font-size:16px; margin:0 0 8px; color: var(--amber);">ℹ Only part of this site was crawled</h2>
       <p style="margin:0; color: var(--ink);">{{ data.truncation_notice }}</p>
@@ -48,7 +54,7 @@
   </div>
   {% endif %}
 
-  <div class="section">
+  <div class="section" data-audience="all">
     <div class="summary-card">
       <h2 style="font-size:18px; margin-bottom:8px;">In plain terms</h2>
       <ul>
@@ -60,13 +66,13 @@
   </div>
 
   {% if data.ai_summary %}
-  <div class="section">
+  <div class="section" data-audience="all">
     <div class="section-head"><h2>Executive Summary</h2><div class="desc">AI-generated from the scores and findings below — a starting point for a stakeholder update, not a replacement for reading the detail.</div></div>
     <div class="card"><div class="ai-note">{{ data.ai_summary }}</div></div>
   </div>
   {% endif %}
 
-  <div class="section">
+  <div class="section" data-audience="business">
     <div class="section-head"><h2>UX Lead's Assessment</h2><div class="desc">A narrative read of the findings below, the way a senior UX lead would actually frame them in a review — not just restated numbers.</div></div>
     <div class="card">
       {% for para in data.lead_assessment.paragraphs %}
@@ -75,7 +81,7 @@
     </div>
   </div>
 
-  <div class="section">
+  <div class="section" data-audience="all">
     <div class="section-head"><h2>Scorecard</h2><div class="desc">Each score is 0–100, where higher is healthier. Hover the label for what it's actually measuring.</div></div>
     <div class="score-grid">
       <div class="score-card band-{{ data.scoring.ux_maturity_band.replace(' ', '-') }}">
@@ -106,7 +112,7 @@
     </div>
   </div>
 
-  <div class="section">
+  <div class="section" data-audience="ux">
     <div class="section-head">
       <h2>Heuristic Evaluation</h2>
       <div class="desc">
@@ -146,7 +152,7 @@
     </div>
   </div>
 
-  <div class="section">
+  <div class="section" data-audience="business">
     <div class="section-head"><h2>Prioritized Action Plan</h2><div class="desc">Every finding above, ranked — with a rough Impact/Effort read on each, the way you'd actually decide what goes into the next sprint versus the backlog.</div></div>
     <div class="chart-grid" style="margin-bottom:14px;">
       <div class="chart-box" style="grid-column: 1 / -1;">
@@ -160,6 +166,7 @@
         <span class="pill {{ item.priority }}">{{ item.priority }}</span>
         <span class="action-area">{{ item.area }}</span>
         <span style="flex:1;">{{ item.action }}</span>
+        <span class="small-dim" title="{{ effort_bucket_copy[item.effort_bucket].plain }}" style="white-space:nowrap; border-bottom: 1px dotted var(--ink-faint); cursor:help;">{{ effort_bucket_copy[item.effort_bucket].label }}</span>
         <span class="small-dim" style="white-space:nowrap;">Impact: {{ item.impact }} · Effort: {{ item.effort }}</span>
       </div>
       {% else %}
@@ -168,7 +175,7 @@
     </div>
   </div>
 
-  <div class="section">
+  <div class="section" data-audience="content">
     <div class="section-head"><h2>Most Used Keywords</h2><div class="desc">The words and two-word phrases that come up most across the crawled pages — a quick read on what the site is actually about, and whether that matches what it should be about.</div></div>
     <div class="chart-grid">
       <div class="chart-box">
@@ -191,7 +198,7 @@
     </div>
   </div>
 
-  <div class="section">
+  <div class="section" data-audience="business">
     <div class="section-head"><h2>Integrations &amp; Third-Party Scripts</h2><div class="desc">What's actually loading on the site — analytics, tag managers, chat widgets, and anything else pulled in from an external script. Matched against a registry of known loader URLs; anything not recognized is still listed under "Other scripts found," it's just not identified by name.</div></div>
     <div class="stat-row">
       <div class="stat"><div class="v">{{ data.integrations.unique_external_scripts }}</div><div class="l">Unique external scripts</div></div>
@@ -236,7 +243,7 @@
     {% endif %}
   </div>
 
-  <div class="section">
+  <div class="section" data-audience="business">
     <div class="section-head"><h2>Feature Matrix</h2><div class="desc">A checklist of common website features detected from the actual markup crawled — search, login, e-commerce, and so on. "Not detected" means the pattern this tool checks for wasn't found; worth a manual double-check before treating it as confirmed absent, especially for anything gated behind a login.</div></div>
     <div class="stat-row" style="margin-bottom:14px;">
       <div class="stat"><div class="v">{{ data.feature_matrix.present_count }} / {{ data.feature_matrix.total_count }}</div><div class="l">Features detected</div></div>
@@ -261,7 +268,66 @@
     </div>
   </div>
 
-  <div class="section">
+  {% if data.tech_fingerprint and data.tech_fingerprint.signals_found %}
+  <div class="section" data-audience="business">
+    <div class="section-head"><h2>Technology Fingerprint</h2><div class="desc">
+      CMS/platform, JS framework, and CDN — guessed from generator meta tags, known asset-path patterns, and response headers seen across the crawl. Pattern-matching against publicly-known signatures, not a guarantee: report the strongest signal, not a certainty.
+    </div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.tech_fingerprint.likely_cms or "Unknown" }}</div><div class="l">Likely CMS/platform</div></div>
+      <div class="stat"><div class="v">{{ data.tech_fingerprint.likely_frameworks|join(', ') or "None detected" }}</div><div class="l">Likely JS framework(s)</div></div>
+      <div class="stat"><div class="v">{{ data.tech_fingerprint.likely_cdn|join(', ') or "None detected" }}</div><div class="l">CDN provider(s)</div></div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h3 style="font-size:14px; margin:0 0 10px;">All signals found</h3>
+      {% for s in data.tech_fingerprint.top_signals[:15] %}
+      <p class="small-dim" style="margin:0 0 4px;">{{ s.signal }} — {{ s.page_count }} page(s)</p>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if data.risk and (data.risk.mixed_content_count or data.risk.looks_like_exposed_staging or data.risk.pii_form_count) %}
+  <div class="section" data-audience="business">
+    <div class="section-head"><h2>Risk Flags</h2><div class="desc">
+      Pattern-matched signals worth a human look before scoping — not a security audit, not a legal/compliance determination.
+    </div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.risk.mixed_content_count }}</div><div class="l">Mixed-content pages</div></div>
+      <div class="stat"><div class="v">{{ "Yes" if data.risk.looks_like_exposed_staging else "No" }}</div><div class="l">Looks like exposed staging</div></div>
+      <div class="stat"><div class="v">{{ data.risk.pii_form_count }}</div><div class="l">PII-looking forms</div></div>
+      <div class="stat"><div class="v">{{ "Yes" if data.risk.privacy_policy_found else "No" }}</div><div class="l">Privacy policy link found</div></div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if data.ssl %}
+  <div class="section" data-audience="business">
+    <div class="section-head"><h2>SSL Certificate</h2><div class="desc">A direct TLS handshake against the site — not part of the page crawl itself.</div></div>
+    <div class="stat-row">
+      {% if data.ssl.reachable %}
+      <div class="stat"><div class="v">{{ data.ssl.days_until_expiry }}</div><div class="l">Days until expiry</div></div>
+      <div class="stat"><div class="v">{{ "⚠ Soon" if data.ssl.expiring_soon else "OK" }}</div><div class="l">Status</div></div>
+      {% else %}
+      <div class="stat"><div class="v">Failed</div><div class="l">Could not complete TLS handshake: {{ data.ssl.error }}</div></div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if data.variance %}
+  <div class="section" data-audience="business">
+    <div class="section-head"><h2>Client-Stated vs. Crawled</h2><div class="desc">What the client said going in, compared against what this crawl actually found.</div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.variance.client_stated_page_count }}</div><div class="l">Client-stated pages</div></div>
+      <div class="stat"><div class="v">{{ data.variance.crawled_page_count }}</div><div class="l">Crawled pages</div></div>
+      <div class="stat"><div class="v">{{ data.variance.difference_pct }}%</div><div class="l">Variance</div></div>
+    </div>
+    <p class="small-dim" style="margin-top:12px;">{{ data.variance.note }}</p>
+  </div>
+  {% endif %}
+
+  <div class="section" data-audience="ux">
     <div class="section-head"><h2>Site Structure</h2><div class="desc">How the site is organized, and how many clicks it takes to reach each page from the homepage.</div></div>
     <div class="chart-grid">
       <div class="chart-box">
@@ -281,7 +347,81 @@
     </div>
   </div>
 
-  <div class="section">
+  {% if data.templates and data.templates.pages_analyzed %}
+  <div class="section" data-audience="ux">
+    <div class="section-head"><h2>Page Templates</h2><div class="desc">
+      Pages grouped by their actual HTML structure (tags/layout), not by URL pattern or title — a rough proxy for how many distinct layouts this site is really built from, and which pages don't match any other page's shape.
+    </div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.templates.unique_template_count }}</div><div class="l">Unique templates detected</div></div>
+      <div class="stat"><div class="v">{{ data.templates.templates_with_reuse }}</div><div class="l">Templates used by 2+ pages</div></div>
+      <div class="stat"><div class="v">{{ data.templates.one_off_count }}</div><div class="l">One-off pages (no match)</div></div>
+      <div class="stat"><div class="v">{{ data.templates.pages_analyzed }}</div><div class="l">Pages analyzed</div></div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <h3 style="font-size:14px; margin:0 0 10px;">Most-reused templates</h3>
+      <table>
+        <thead><tr><th>Pages using it</th><th>Example page</th></tr></thead>
+        <tbody>
+          {% for t in data.templates.templates[:15] %}
+          <tr>
+            <td>{{ t.page_count }}</td>
+            <td><a href="{{ t.example_url }}" target="_blank" rel="noopener">{{ t.example_title }}</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if data.templates.one_off_pages %}
+    <div class="card" style="margin-top:16px;">
+      <h3 style="font-size:14px; margin:0 0 6px;">One-off pages — no other crawled page shares this layout</h3>
+      <p class="small-dim" style="margin:0 0 10px;">Often a legitimately special page (a campaign or announcement page); occasionally a sign of drift from the rest of the site's design system. Worth a quick look, not necessarily a problem.</p>
+      <ul style="margin:0; padding-left:18px;">
+        {% for p in data.templates.one_off_pages[:15] %}
+        <li><a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if data.components and data.components.unique_component_count %}
+  <div class="section" data-audience="ux">
+    <div class="section-head"><h2>Reusable UI Components</h2><div class="desc">
+      Recurring pieces of markup (cards, nav bars, CTAs, forms, tables, accordions, etc.) found across multiple pages — identified by tag and class, not by page layout, so the same component can show up inside several different templates. A rough inventory of what's actually in this site's design system, not a substitute for its real component library.
+    </div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.components.unique_component_count }}</div><div class="l">Reusable components found</div></div>
+      <div class="stat"><div class="v">{{ data.components.pages_analyzed }}</div><div class="l">Pages analyzed</div></div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <table>
+        <thead><tr><th>Component</th><th>Pages using it</th><th>Coverage</th><th>Example page</th></tr></thead>
+        <tbody>
+          {% for c in data.components.components[:25] %}
+          <tr>
+            <td><code>&lt;{{ c.tag }}{% if c.classes %} class="{{ c.classes }}"{% endif %}&gt;</code></td>
+            <td>{{ c.page_count }}</td>
+            <td>{{ c.page_coverage_pct }}%</td>
+            <td><a href="{{ c.example_url }}" target="_blank" rel="noopener">view</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if data.components.style_inconsistencies %}
+    <div class="card" style="margin-top:16px; border: 2px solid var(--amber); background: rgba(184,134,43,0.06);">
+      <h3 style="font-size:14px; margin:0 0 10px; color: var(--amber);">Style inconsistencies</h3>
+      {% for inc in data.components.style_inconsistencies %}
+      <p style="margin:0 0 8px;">{{ inc.distinct_style_count }} distinct <code>&lt;{{ inc.tag }}&gt;</code> styles detected across {{ inc.total_pages_covered }} page(s): {{ inc.signatures|join(', ') }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="section" data-audience="ux">
     <div class="section-head"><h2>Inferred User Journey Maps</h2><div class="desc">
       Not real behavioral data — a crawler has no access to analytics or session recordings. This infers where each
       persona's goal-driven path most likely lives in the site's actual structure, and how many clicks it takes to
@@ -322,7 +462,7 @@
   </div>
 
   {% if data.target_customers and data.target_customers.personas %}
-  <div class="section">
+  <div class="section" data-audience="business">
     <div class="section-head"><h2>Target Customers &amp; Their Journeys</h2><div class="desc">
       AI-inferred purely from the pages, titles, and keywords actually crawled — not real user research,
       and not outside knowledge of this brand. Treat it as an informed starting hypothesis worth validating
@@ -345,7 +485,7 @@
   </div>
   {% endif %}
 
-  <div class="section">
+  <div class="section" data-audience="ux">
     <div class="section-head"><h2>Internal Linking Map</h2><div class="desc">A map of how pages link to each other (capped at {{ graph_cap }} nodes for legibility). Bigger dots have more inbound links — tiny, disconnected dots are worth a look.</div></div>
     <div class="chart-box">
       <canvas id="link-graph" width="1040" height="440" style="width:100%; max-width:100%; border-radius: var(--radius-sm); background: var(--surface-2); cursor: grab;"></canvas>
@@ -353,7 +493,7 @@
   </div>
 
   {% if data.link_health.checked %}
-  <div class="section">
+  <div class="section" data-audience="business">
     <div class="section-head"><h2>External Link Health</h2><div class="desc">Spot-checked {{ data.link_health.checked }} external link target(s) found during the crawl.</div></div>
     <div class="card">
       {% if data.link_health.broken %}
@@ -372,13 +512,55 @@
   </div>
   {% endif %}
 
-  <div class="section">
-    <div class="section-head"><h2>Crawl Detail</h2><div class="desc">The underlying numbers behind the scores above, for anyone who wants to double-check the math.</div></div>
-    <div class="chart-grid">
+  {% if data.url_health and data.url_health.pages_reached_via_redirect %}
+  <div class="section" data-audience="business">
+    <div class="section-head"><h2>URL Structure &amp; Redirect Complexity</h2><div class="desc">
+      How messy the site's URL layer actually is — relevant to migration scoping (a clean URL-mapping spreadsheet vs. a complicated one) and to SEO risk (duplicate-content dilution from inconsistent URL forms).
+    </div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.url_health.redirect_loop_count }}</div><div class="l">Redirect loops</div></div>
+      <div class="stat"><div class="v">{{ data.url_health.pages_reached_via_redirect }}</div><div class="l">Pages reached via redirect</div></div>
+      <div class="stat"><div class="v">{{ data.url_health.multi_hop_redirect_count }}</div><div class="l">Multi-hop chains (2+)</div></div>
+      <div class="stat"><div class="v">{{ data.url_health.longest_redirect_chain }}</div><div class="l">Longest chain (hops)</div></div>
+    </div>
+    <div class="stat-row" style="margin-top:12px;">
+      <div class="stat"><div class="v">{{ data.url_health.trailing_slash_inconsistencies|length }}</div><div class="l">Trailing-slash inconsistencies</div></div>
+      <div class="stat"><div class="v">{{ data.url_health.case_inconsistencies|length }}</div><div class="l">Case inconsistencies</div></div>
+      <div class="stat"><div class="v">{{ data.url_health.param_bloat_count }}</div><div class="l">Param-bloated URLs (4+)</div></div>
+      <div class="stat"><div class="v">{{ data.url_health.tracking_param_count }}</div><div class="l">Internal links with tracking params</div></div>
+    </div>
+    {% if data.url_health.example_chains %}
+    <div class="card" style="margin-top:16px;">
+      <h3 style="font-size:14px; margin:0 0 10px;">Longest redirect chains</h3>
+      {% for c in data.url_health.example_chains[:8] %}
+      <p class="small-dim" style="margin:0 0 6px; word-break:break-all;">{{ c.hops }} hop(s): {{ c.chain|join(' → ') }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if data.url_health.trailing_slash_inconsistencies or data.url_health.case_inconsistencies %}
+    <div class="card" style="margin-top:16px;">
+      <h3 style="font-size:14px; margin:0 0 10px;">Same page, inconsistent URL form</h3>
+      {% for pair in (data.url_health.trailing_slash_inconsistencies + data.url_health.case_inconsistencies)[:12] %}
+      <p class="small-dim" style="margin:0 0 6px; word-break:break-all;">{{ pair.pages|join(' vs. ') }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="section" data-audience="business">
+    <div class="section-head"><h2>Crawl Reliability</h2><div class="desc">The underlying HTTP-level numbers behind the scores above — useful for confirming the crawl itself was healthy before trusting anything else.</div></div>
+    <div class="chart-grid single">
       <div class="chart-box">
         <h3>HTTP status codes returned</h3>
         <canvas id="chart-status" height="180"></canvas>
       </div>
+    </div>
+  </div>
+
+  <div class="section" data-audience="content">
+    <div class="section-head"><h2>Content &amp; Accessibility Signals</h2><div class="desc">The underlying numbers behind the content and accessibility scores above.</div></div>
+    <div class="chart-grid single">
       <div class="chart-box">
         <h3>Content &amp; accessibility signals</h3>
         <table>
@@ -388,12 +570,86 @@
           <tr><td>Image alt-text coverage</td><td>{{ data.content.image_alt_coverage_pct }}%</td></tr>
           <tr><td>Pages with a11y issues</td><td>{{ data.accessibility.pages_with_issues }} / {{ data.accessibility.pages_analyzed }}</td></tr>
           <tr><td>Schema.org coverage</td><td>{{ data.seo.schema_coverage_pct }}%</td></tr>
+          {% if data.content.readability_avg is not none %}
+          <tr><td>Average readability (Flesch Reading Ease, 0-100)</td><td>{{ data.content.readability_avg }} <span class="small-dim">({{ data.content.readability_pages_scored }} pages scored)</span></td></tr>
+          {% endif %}
         </table>
       </div>
     </div>
   </div>
 
-  <div class="section">
+  {% if data.freshness and data.freshness.pages_with_known_date %}
+  <div class="section" data-audience="content">
+    <div class="section-head"><h2>Content Freshness</h2><div class="desc">
+      Based on the HTTP Last-Modified header or sitemap.xml's &lt;lastmod&gt;, whichever this crawl could find for a given page. Many sites don't reliably expose either — that gap is reported honestly below rather than treated as "old."
+    </div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.freshness.pages_with_known_date }}</div><div class="l">Pages with a known date</div></div>
+      <div class="stat"><div class="v">{{ data.freshness.unknown_date_pct }}%</div><div class="l">No date data available</div></div>
+      <div class="stat"><div class="v">{{ data.freshness.stale_over_1yr_pct }}%</div><div class="l">Untouched 1yr+</div></div>
+      <div class="stat"><div class="v">{{ data.freshness.stale_over_3yr_pct }}%</div><div class="l">Untouched 3yr+</div></div>
+    </div>
+    {% if data.freshness.stalest_pages %}
+    <div class="card" style="margin-top:16px;">
+      <h3 style="font-size:14px; margin:0 0 10px;">Stalest pages</h3>
+      <table>
+        <thead><tr><th>Page</th><th>Days since last update</th></tr></thead>
+        <tbody>
+          {% for p in data.freshness.stalest_pages[:15] %}
+          <tr><td class="url-cell">{{ p.url }}</td><td>{{ p.days_since_update }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if data.media and (data.media.total_images or data.media.document_total or data.media.video_embed_count) %}
+  <div class="section" data-audience="content">
+    <div class="section-head"><h2>Media &amp; Asset Inventory</h2><div class="desc">
+      Images (by hosting domain — a proxy for DAM governance), video embeds, and document/download links found across the crawl. This build only ever requests HTML pages, not the assets themselves, so file size and pixel dimensions aren't available — this is presence, hosting domain, and file type only.
+    </div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.media.total_images }}</div><div class="l">Images found</div></div>
+      <div class="stat"><div class="v">{{ data.media.off_dominant_domain_pct }}%</div><div class="l">Hosted off main image domain</div></div>
+      <div class="stat"><div class="v">{{ data.media.video_embed_count }}</div><div class="l">Video embeds</div></div>
+      <div class="stat"><div class="v">{{ data.media.document_total }}</div><div class="l">Document/download links</div></div>
+    </div>
+    {% if data.media.document_counts_by_type %}
+    <div class="card" style="margin-top:16px;">
+      <h3 style="font-size:14px; margin:0 0 10px;">Documents by type</h3>
+      {% for ext, count in data.media.document_counts_by_type.items() %}
+      <p class="small-dim" style="margin:0 0 4px;">.{{ ext }}: {{ count }}</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if data.locale and (data.locale.is_multilingual or data.locale.pages_with_hreflang) %}
+  <div class="section" data-audience="content">
+    <div class="section-head"><h2>Locale &amp; Language Coverage</h2><div class="desc">
+      Which languages this site actually declares (via each page's lang attribute and hreflang alternates), and where an hreflang link points somewhere this crawl never reached.
+    </div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.locale.lang_attribute_counts|length }}</div><div class="l">Distinct lang values</div></div>
+      <div class="stat"><div class="v">{{ data.locale.hreflang_locale_counts|length }}</div><div class="l">Distinct hreflang locales</div></div>
+      <div class="stat"><div class="v">{{ data.locale.pages_without_lang }}</div><div class="l">Pages with no lang attribute</div></div>
+      <div class="stat"><div class="v">{{ data.locale.broken_hreflang_count }}</div><div class="l">Broken hreflang links</div></div>
+    </div>
+    {% if data.locale.lang_attribute_counts %}
+    <div class="card" style="margin-top:16px;">
+      <h3 style="font-size:14px; margin:0 0 10px;">Pages per declared language</h3>
+      {% for lang, count in data.locale.lang_attribute_counts.items() %}
+      <p class="small-dim" style="margin:0 0 4px;">{{ lang }}: {{ count }} page(s)</p>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="section" data-audience="content">
     <div class="section-head"><h2>Full Page Inventory</h2><div class="desc">{{ data.pages|length }} pages, sortable and filterable.</div></div>
     <div class="card">
       <div class="field" style="max-width:340px;">
@@ -629,6 +885,37 @@ renderTable();
     else setInterval(() => { step(); draw(); }, 400);
   }
   loop();
+})();
+
+// --- Audience tabs -------------------------------------------------
+// Purely a view filter: every section stays in the exported/printed
+// HTML regardless of which tab is active — this only toggles what's
+// visible on screen, grouped by which audience each section serves.
+(function() {
+  const tabs = document.querySelectorAll('.audience-tab');
+  const sections = document.querySelectorAll('[data-audience]');
+
+  function activate(tabName) {
+    tabs.forEach(t => {
+      const active = t.dataset.tab === tabName;
+      t.classList.toggle('active', active);
+      t.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    sections.forEach(s => {
+      const audience = s.dataset.audience;
+      s.classList.toggle('tab-hidden', audience !== 'all' && audience !== tabName);
+    });
+    try { sessionStorage.setItem('audit-report-tab', tabName); } catch (e) { /* private browsing etc — just won't persist, not fatal */ }
+  }
+
+  tabs.forEach(t => t.addEventListener('click', () => activate(t.dataset.tab)));
+
+  let initialTab = 'ux';
+  try {
+    const saved = sessionStorage.getItem('audit-report-tab');
+    if (saved) initialTab = saved;
+  } catch (e) { /* ignore */ }
+  activate(initialTab);
 })();
 </script>
 

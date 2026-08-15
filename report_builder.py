@@ -8,7 +8,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from ux_copy import BAND_COPY, SCORE_COPY
+from ux_copy import BAND_COPY, EFFORT_BUCKET_COPY, SCORE_COPY
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 
@@ -22,7 +22,7 @@ def render_html_report(audit_data: dict, graph_cap: int = 250) -> str:
     template = _env.get_template("report.html")
     return template.render(
         data=audit_data, data_json=json.dumps(audit_data), graph_cap=graph_cap,
-        score_copy=SCORE_COPY, band_copy=BAND_COPY,
+        score_copy=SCORE_COPY, band_copy=BAND_COPY, effort_bucket_copy=EFFORT_BUCKET_COPY,
     )
 
 
@@ -139,16 +139,21 @@ def export_xlsx(audit_data: dict) -> bytes:
 
     # ---- Action Plan ----
     ws3 = wb.create_sheet("Action Plan")
-    ws3.append(["Priority", "Impact", "Effort", "Area", "Action"])
+    ws3.append(["Priority", "Impact", "Effort", "Effort Bucket", "Persona(s)", "Area", "Action"])
     for item in audit_data["scoring"]["action_plan"]:
-        ws3.append([item["priority"].capitalize(), item.get("impact", ""), item.get("effort", ""), item["area"], item["action"]])
+        effort_bucket_label = EFFORT_BUCKET_COPY.get(item.get("effort_bucket", ""), {}).get("label", "")
+        personas_label = ", ".join(p.upper() for p in item.get("personas", []))
+        ws3.append([
+            item["priority"].capitalize(), item.get("impact", ""), item.get("effort", ""),
+            effort_bucket_label, personas_label, item["area"], item["action"],
+        ])
         ws3.cell(row=ws3.max_row, column=1).fill = PRIORITY_FILLS.get(item["priority"], PatternFill())
     style_header(ws3)
     for row in ws3.iter_rows(min_row=2):
-        row[4].alignment = WRAP
-    autosize(ws3, [12, 11, 11, 16, 76])
+        row[6].alignment = WRAP
+    autosize(ws3, [12, 11, 11, 18, 14, 16, 66])
     if ws3.max_row > 1:
-        add_table(ws3, "ActionPlan", ws3.max_row - 1, 5)
+        add_table(ws3, "ActionPlan", ws3.max_row - 1, 7)
 
     # ---- Keywords ----
     ws4 = wb.create_sheet("Keywords")

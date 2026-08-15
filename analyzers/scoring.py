@@ -37,33 +37,71 @@ def score_seo(seo: dict, total_pages: int) -> float:
     return round((title_score * 0.4 + desc_score * 0.4 + canonical_score * 0.2), 1)
 
 
-def build_action_plan(ia: dict, content: dict, a11y: dict, seo: dict) -> list[dict]:
+def build_action_plan(
+    ia: dict, content: dict, a11y: dict, seo: dict, url_health: dict | None = None,
+    freshness: dict | None = None, media: dict | None = None, locale: dict | None = None,
+    risk: dict | None = None, components: dict | None = None,
+) -> list[dict]:
     """Merge all analyzer recommendations into a single prioritized list,
     with rough Impact/Effort sizing — the classic UX-lead prioritization
     lens for deciding what to actually schedule first. These are directional
     estimates from the kind of fix each finding usually requires, not a
     measurement of this specific codebase.
+
+    Each item also carries an effort_bucket (ootb fix / config effort /
+    custom dev) and the persona(s) it's most relevant to — this is what
+    lets the Business Analyst export a SOW-scoping-ready findings list,
+    and what the report's persona tabs filter the action plan by.
     """
     items = []
     if ia["orphan_page_count"]:
         items.append({"priority": "high", "area": "IA", "impact": "High", "effort": "Medium",
+                      "effort_bucket": "config", "personas": ["ux", "business"],
                       "action": f"Fix {ia['orphan_page_count']} orphan page(s) with no internal inbound links."})
     if ia["pages_over_3_clicks"]:
         items.append({"priority": "medium", "area": "IA", "impact": "Medium", "effort": "Medium",
+                      "effort_bucket": "config", "personas": ["ux", "business"],
                       "action": f"Reduce click depth for {ia['pages_over_3_clicks']} page(s) currently more than 3 clicks from the homepage."})
     for rec in content["recommendations"]:
-        items.append({"priority": "medium", "area": "Content", "impact": "Medium", "effort": "Medium", "action": rec})
+        items.append({"priority": "medium", "area": "Content", "impact": "Medium", "effort": "Medium",
+                      "effort_bucket": rec["effort_bucket"], "personas": rec["personas"], "action": rec["text"]})
     for rec in a11y["recommendations"]:
-        items.append({"priority": "high", "area": "Accessibility", "impact": "High", "effort": "Low", "action": rec})
+        items.append({"priority": "high", "area": "Accessibility", "impact": "High", "effort": "Low",
+                      "effort_bucket": rec["effort_bucket"], "personas": rec["personas"], "action": rec["text"]})
     for rec in seo["recommendations"]:
-        items.append({"priority": "medium", "area": "SEO", "impact": "Medium", "effort": "Low", "action": rec})
+        items.append({"priority": "medium", "area": "SEO", "impact": "Medium", "effort": "Low",
+                      "effort_bucket": rec["effort_bucket"], "personas": rec["personas"], "action": rec["text"]})
+    for rec in (url_health or {}).get("recommendations", []):
+        priority = "high" if "redirect loop" in rec["text"] else "medium"
+        items.append({"priority": priority, "area": "URL Structure", "impact": "Medium", "effort": "Low",
+                      "effort_bucket": rec["effort_bucket"], "personas": rec["personas"], "action": rec["text"]})
+    for rec in (freshness or {}).get("recommendations", []):
+        items.append({"priority": "low", "area": "Content Freshness", "impact": "Low", "effort": "Medium",
+                      "effort_bucket": rec["effort_bucket"], "personas": rec["personas"], "action": rec["text"]})
+    for rec in (media or {}).get("recommendations", []):
+        items.append({"priority": "low", "area": "Media/Assets", "impact": "Low", "effort": "Medium",
+                      "effort_bucket": rec["effort_bucket"], "personas": rec["personas"], "action": rec["text"]})
+    for rec in (locale or {}).get("recommendations", []):
+        items.append({"priority": "medium", "area": "Locale", "impact": "Medium", "effort": "Low",
+                      "effort_bucket": rec["effort_bucket"], "personas": rec["personas"], "action": rec["text"]})
+    for rec in (risk or {}).get("recommendations", []):
+        items.append({"priority": "high", "area": "Risk", "impact": "High", "effort": "Low",
+                      "effort_bucket": rec["effort_bucket"], "personas": rec["personas"], "action": rec["text"]})
+    for rec in (components or {}).get("recommendations", []):
+        items.append({"priority": "low", "area": "Components", "impact": "Low", "effort": "Medium",
+                      "effort_bucket": rec["effort_bucket"], "personas": rec["personas"], "action": rec["text"]})
 
     order = {"high": 0, "medium": 1, "low": 2}
     items.sort(key=lambda i: order.get(i["priority"], 3))
     return items
 
 
-def run_scoring(ia: dict, content: dict, a11y: dict, seo: dict, total_pages: int) -> dict:
+def run_scoring(
+    ia: dict, content: dict, a11y: dict, seo: dict, total_pages: int,
+    url_health: dict | None = None, freshness: dict | None = None,
+    media: dict | None = None, locale: dict | None = None, risk: dict | None = None,
+    components: dict | None = None,
+) -> dict:
     ia_score = score_ia(ia, total_pages)
     content_score = score_content(content, total_pages)
     a11y_score = score_accessibility(a11y)
@@ -86,5 +124,5 @@ def run_scoring(ia: dict, content: dict, a11y: dict, seo: dict, total_pages: int
         "seo_score": seo_score,
         "ux_maturity_score": ux_maturity,
         "ux_maturity_band": band(ux_maturity),
-        "action_plan": build_action_plan(ia, content, a11y, seo),
+        "action_plan": build_action_plan(ia, content, a11y, seo, url_health, freshness, media, locale, risk, components),
     }

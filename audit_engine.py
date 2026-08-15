@@ -11,10 +11,11 @@ The full-featured build (Streamlit/Docker) lives in the sibling project.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Awaitable, Callable, Optional
 
-from analyzers import accessibility, content, feature_matrix, ia, integrations, journey, keywords, link_health, scoring, seo
+from analyzers import accessibility, components, content, feature_matrix, freshness, ia, integrations, journey, keywords, link_health, locale, media, risk, scoring, seo, tech_fingerprint, templates, url_health, variance
 from analyzers.heuristics import classify_into_heuristics, heuristic_summary
 from ai_insights import generate_ai_summary, generate_target_customers
 from crawler import AsyncCrawler, CrawlConfig
@@ -123,7 +124,22 @@ async def run_audit(
     content_results = content.run_content_analysis(pages)
     a11y_results = accessibility.run_accessibility_analysis(pages)
     seo_results = seo.run_seo_analysis(pages)
-    score_results = scoring.run_scoring(ia_results, content_results, a11y_results, seo_results, len(pages))
+    url_health_results = url_health.run_url_health_analysis(pages)
+    freshness_results = freshness.run_freshness_analysis(pages)
+    media_results = media.run_media_analysis(
+        crawler.image_domain_counts, crawler.video_embed_count,
+        crawler.document_extension_counts, crawler.document_link_examples,
+    )
+    locale_results = locale.run_locale_analysis(pages)
+    risk_results = risk.run_risk_analysis(pages, config.start_url, crawler.privacy_policy_url_found)
+    tech_fingerprint_results = tech_fingerprint.run_tech_fingerprint_analysis(crawler.tech_signals, len(pages))
+    ssl_result = await asyncio.to_thread(risk.check_ssl_expiry, config.start_url)
+    component_results = components.run_component_analysis(crawler.component_hits, len(pages))
+    score_results = scoring.run_scoring(
+        ia_results, content_results, a11y_results, seo_results, len(pages),
+        url_health_results, freshness_results, media_results, locale_results, risk_results,
+        component_results,
+    )
     keyword_results = keywords.run_keyword_analysis(
         crawler.global_word_counts, crawler.global_bigram_counts, crawler.global_doc_freq, len(pages)
     )
@@ -133,6 +149,7 @@ async def run_audit(
     feature_matrix_results = feature_matrix.run_feature_matrix(
         crawler.feature_hits, integration_results["detected"]
     )
+    template_results = templates.run_template_analysis(pages)
     journey_map = journey.build_journey_map(pages, ia_results["click_depths"], custom_personas=custom_personas)
     heuristics_results = classify_into_heuristics(score_results["action_plan"])
     plain_summary = build_plain_summary(score_results, ia_results, content_results, a11y_results)
@@ -175,6 +192,8 @@ async def run_audit(
             f"a specific city/category path) and run separately for each."
         )
 
+    variance_result = variance.run_variance_analysis(config.client_stated_page_count, len(pages), crawl_truncated)
+
     audit_data = {
         "crawl_warning": crawl_warning,
         "truncation_notice": truncation_notice,
@@ -208,6 +227,7 @@ async def run_audit(
                 "script_count": rec.script_count,
                 "external_script_count": rec.external_script_count,
                 "error": rec.error,
+                "template_fingerprint": rec.template_fingerprint,
             }
             for url, rec in pages.items()
         },
@@ -220,6 +240,16 @@ async def run_audit(
         "keywords": keyword_results,
         "integrations": integration_results,
         "feature_matrix": feature_matrix_results,
+        "templates": template_results,
+        "components": component_results,
+        "url_health": url_health_results,
+        "freshness": freshness_results,
+        "media": media_results,
+        "locale": locale_results,
+        "risk": risk_results,
+        "tech_fingerprint": tech_fingerprint_results,
+        "ssl": ssl_result,
+        "variance": variance_result,
         "journey_map": journey_map,
         "link_health": link_health_results,
         "heuristics": heuristics_results,

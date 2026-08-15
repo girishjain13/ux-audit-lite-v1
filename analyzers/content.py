@@ -66,18 +66,52 @@ def run_content_analysis(pages: dict[str, PageRecord]) -> dict:
     images_total = sum(rec.images_total for rec in pages.values())
     images_missing_alt = sum(rec.images_missing_alt for rec in pages.values())
 
+    # Readability (Flesch Reading Ease, 0-100, higher = easier to read) —
+    # computed per-page in crawler.py, aggregated here. Only pages with
+    # enough words to make the estimate meaningful get a score at all.
+    readability_scores = [rec.readability_score for rec in pages.values() if rec.readability_score is not None]
+    hard_to_read_pages = sorted(
+        ({"url": url, "score": rec.readability_score} for url, rec in pages.items() if rec.readability_score is not None and rec.readability_score < 30),
+        key=lambda p: p["score"],
+    )
+
+    # Every recommendation carries a directional effort_bucket (ootb fix /
+    # config effort / custom dev) and which persona(s) it's most relevant
+    # to — feeds the Business Analyst's SOW-scoping export and the
+    # persona-filtered action plan. These are the kind of fix each finding
+    # usually requires, not a measurement of this specific site's CMS.
     recommendations = []
     if thin_pages:
-        recommendations.append(
-            f"{len(thin_pages)} page(s) have under {THIN_CONTENT_THRESHOLD} words — expand or consolidate to avoid thin-content UX and SEO issues."
-        )
+        recommendations.append({
+            "text": f"{len(thin_pages)} page(s) have under {THIN_CONTENT_THRESHOLD} words — expand or consolidate to avoid thin-content UX and SEO issues.",
+            "effort_bucket": "config", "personas": ["content"],
+        })
     if duplicate_groups:
         n_dupes = sum(len(v) for v in duplicate_groups.values())
-        recommendations.append(f"{n_dupes} page(s) duplicate content found on another URL — canonicalize or merge.")
+        recommendations.append({
+            "text": f"{n_dupes} page(s) duplicate content found on another URL — canonicalize or merge.",
+            "effort_bucket": "config", "personas": ["content", "business"],
+        })
     if meta_dupes["duplicate_titles"]:
-        recommendations.append(f"{len(meta_dupes['duplicate_titles'])} title(s) are reused across multiple pages — make titles unique per page.")
+        recommendations.append({
+            "text": f"{len(meta_dupes['duplicate_titles'])} title(s) are reused across multiple pages — make titles unique per page.",
+            "effort_bucket": "config", "personas": ["content"],
+        })
+    if meta_dupes["duplicate_descriptions"]:
+        recommendations.append({
+            "text": f"{len(meta_dupes['duplicate_descriptions'])} meta description(s) are reused across multiple pages — write unique descriptions per page.",
+            "effort_bucket": "config", "personas": ["content"],
+        })
     if images_total and images_missing_alt / max(images_total, 1) > 0.2:
-        recommendations.append("Over 20% of images are missing alt text — this hurts both accessibility and image SEO.")
+        recommendations.append({
+            "text": "Over 20% of images are missing alt text — this hurts both accessibility and image SEO.",
+            "effort_bucket": "config", "personas": ["ux", "content"],
+        })
+    if readability_scores and len(hard_to_read_pages) / max(len(readability_scores), 1) > 0.2:
+        recommendations.append({
+            "text": f"{len(hard_to_read_pages)} page(s) score under 30 on readability (Flesch Reading Ease) — dense, hard-to-read copy for general visitors.",
+            "effort_bucket": "config", "personas": ["content"],
+        })
 
     return {
         "total_pages_analyzed": len(pages),
@@ -93,5 +127,9 @@ def run_content_analysis(pages: dict[str, PageRecord]) -> dict:
         "images_total": images_total,
         "images_missing_alt": images_missing_alt,
         "image_alt_coverage_pct": round(100 * (1 - images_missing_alt / images_total), 1) if images_total else 100.0,
+        "readability_avg": round(mean(readability_scores), 1) if readability_scores else None,
+        "readability_pages_scored": len(readability_scores),
+        "hard_to_read_pages": hard_to_read_pages[:15],
+        "hard_to_read_count": len(hard_to_read_pages),
         "recommendations": recommendations,
     }

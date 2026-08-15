@@ -39,13 +39,26 @@ class RobotsInfo:
         except Exception:
             return True
 
-    async def discover_sitemap_urls(self, client: httpx.AsyncClient, cap: int = 5000) -> list[str]:
-        """Fetch discovered sitemaps (and sitemap indexes, one level deep) and return page URLs."""
-        found: list[str] = []
+    async def discover_sitemap_urls(self, client: httpx.AsyncClient, cap: int = 5000) -> dict:
+        """Fetch discovered sitemaps (and sitemap indexes, one level deep)
+        and return {url: lastmod_string_or_None} — lastmod feeds content
+        freshness reporting (see analyzers/freshness.py) when a page's
+        actual HTTP response doesn't carry a Last-Modified header itself.
+        """
+        found: dict = {}
         sitemaps = list(self.sitemap_urls)
         if not sitemaps:
             parsed = urlparse(self.base_url)
             sitemaps = [f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"]
+
+        def _extract(root, ns) -> dict:
+            out = {}
+            for url_el in root.findall(".//sm:url", ns):
+                loc = url_el.find("sm:loc", ns)
+                lastmod = url_el.find("sm:lastmod", ns)
+                if loc is not None and loc.text:
+                    out[loc.text] = lastmod.text if lastmod is not None else None
+            return out
 
         for sitemap_url in sitemaps[:5]:
             try:
@@ -62,15 +75,13 @@ class RobotsInfo:
                             child_resp = await client.get(child, timeout=10.0)
                             if child_resp.status_code == 200:
                                 child_root = ET.fromstring(child_resp.content)
-                                found.extend(
-                                    el.text for el in child_root.findall(".//sm:loc", ns) if el.text
-                                )
+                                found.update(_extract(child_root, ns))
                         except Exception:
                             continue
                 else:
-                    found.extend(el.text for el in root.findall(".//sm:loc", ns) if el.text)
+                    found.update(_extract(root, ns))
             except Exception:
                 continue
             if len(found) >= cap:
                 break
-        return found[:cap]
+        return dict(list(found.items())[:cap])
