@@ -334,3 +334,11 @@ async def test_unlisted_custom_user_agent_still_blocked(waf_server):
     crawler = AsyncCrawler(config, progress)
     pages, edges = await crawler.crawl()
     assert all(rec.status_code == 403 for rec in pages.values())
+
+
+def test_browser_rendering_is_opt_in():
+    from crawler import CrawlConfig
+    cfg = CrawlConfig(start_url="http://example.test/")
+    assert cfg.render_js is False
+    assert cfg.browser_max_pages == 50
+    assert cfg.browser_timeout == 25.0

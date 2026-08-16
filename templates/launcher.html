@@ -70,6 +70,14 @@
           </div>
         </div>
         <p class="small-dim" style="margin-top:-4px; margin-bottom:10px;">Comma-separated plain substrings, not regex. Leave both blank to crawl the whole site with no restriction.</p>
+        <div class="field-row" style="margin-top:10px; align-items:center;">
+          <label class="checkline"><input type="checkbox" id="render_js"> Enable JavaScript rendering (Chromium)</label>
+          <div class="field" style="max-width:220px;">
+            <label class="field-label">Browser pages</label>
+            <input type="number" id="browser_max_pages" value="50" min="1" max="100">
+          </div>
+        </div>
+        <p class="small-dim" style="margin-top:-4px; margin-bottom:10px;">Use this for React/Vue/Angular/SPA sites where navigation or content is rendered client-side. It is slower and captures desktop screenshots for the rendered pages.</p>
         <div class="field" style="margin-top:10px;">
           <label class="field-label">Client-stated page count (optional)</label>
           <input type="number" id="client_stated_page_count" placeholder="e.g. 500">
@@ -208,6 +216,8 @@ document.getElementById('start-btn').addEventListener('click', async () => {
           include_url_patterns: document.getElementById('include_url_patterns').value,
           exclude_url_patterns: document.getElementById('exclude_url_patterns').value,
           client_stated_page_count: document.getElementById('client_stated_page_count').value,
+          render_js: document.getElementById('render_js').checked,
+          browser_max_pages: document.getElementById('browser_max_pages').value,
         },
       }),
     });

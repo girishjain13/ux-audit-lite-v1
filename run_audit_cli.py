@@ -93,6 +93,9 @@ async def main() -> int:
     exclude_url_patterns = [p.strip() for p in os.environ.get("EXCLUDE_URL_PATTERNS", "").split(",") if p.strip()]
     client_stated_raw = os.environ.get("CLIENT_STATED_PAGE_COUNT", "").strip()
     client_stated_page_count = int(client_stated_raw) if client_stated_raw.isdigit() else None
+    render_js = _env_bool("RENDER_JS", False)
+    browser_max_pages = int(os.environ.get("BROWSER_MAX_PAGES", "50"))
+    browser_timeout = float(os.environ.get("BROWSER_TIMEOUT", "25"))
 
     config = CrawlConfig(
         start_url=start_url,
@@ -110,10 +113,13 @@ async def main() -> int:
         include_url_patterns=include_url_patterns,
         exclude_url_patterns=exclude_url_patterns,
         client_stated_page_count=client_stated_page_count,
+        render_js=render_js,
+        browser_max_pages=max(0, min(browser_max_pages, max_pages)),
+        browser_timeout=max(5.0, min(browser_timeout, 120.0)),
     )
     progress = CrawlProgress()
 
-    print(f"[audit] starting crawl of {start_url} (max_pages={config.max_pages})", flush=True)
+    print(f"[audit] starting crawl of {start_url} (max_pages={config.max_pages}, render_js={config.render_js}, browser_max_pages={config.browser_max_pages})", flush=True)
 
     last_logged = -1
 

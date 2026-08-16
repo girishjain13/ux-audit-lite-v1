@@ -5,20 +5,22 @@ a heuristic evaluation — scored, prioritized, and organized the way a
 design review reads — published as a free static site via GitHub Actions
 and GitHub Pages.
 
-This is the **lean, GitHub-Pages-focused build**. There's a sibling
-Streamlit/Docker build with a larger feature set (JS rendering for
-JavaScript-heavy sites, real Core Web Vitals sampling, run-history trend
-tracking); those three specifically caused repeated deployment failures on
-this hosting path — a Playwright browser install step, slow external API
-calls, and a mid-job `git commit` all fighting with the Pages deploy step —
-so they're deliberately not part of this build. Everything else is here.
+This is the **GitHub-Pages-focused build**. It keeps the fast HTTP crawler as
+the default, but now has an **opt-in Playwright/Chromium rendering mode** for
+JavaScript-heavy sites. When enabled, the audit can execute client-side JS,
+inspect the rendered DOM, discover internal links that appear only after
+rendering, capture desktop screenshots, and collect basic interaction signals.
+Because browser rendering is slower and requires a Chromium install, it is
+deliberately disabled by default.
 
 ## What it does
 
-- Crawls a site (static HTML, up to 5,000 pages) respecting `robots.txt`,
+- Crawls a site (up to 5,000 pages) respecting `robots.txt`,
   discovering extra URLs from `sitemap.xml`, following redirects correctly
   (including through pages that themselves redirect), with bounded
   concurrency.
+- Optional JS rendering with Playwright/Chromium for JS-heavy sites;
+  rendered pages can produce screenshots and JS-only internal links.
 - Supports HTTP Basic Auth and a custom User-Agent, for auditing
   password-protected UAT/staging sites or sites you're authorized to audit
   that block the default crawler identity via WAF.
@@ -58,6 +60,16 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 START_URL=https://example.com python run_audit_cli.py
 ```
+
+For a JavaScript-heavy site, install Chromium once and enable rendering:
+
+```bash
+python -m playwright install chromium
+START_URL=https://example.com RENDER_JS=true BROWSER_MAX_PAGES=25 python run_audit_cli.py
+```
+
+The default HTTP-only mode remains the recommended option for large sites;
+use browser rendering selectively because it is substantially slower.
 
 That writes `docs/report.html` (open it directly in a browser) plus
 `docs/exports/*` and `docs/index.html` (the launcher, mostly relevant when

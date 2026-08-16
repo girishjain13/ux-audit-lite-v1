@@ -34,6 +34,20 @@ async def run_audit(
     crawler = AsyncCrawler(config, progress)
     pages, edges = await crawler.crawl(on_progress=on_progress)
 
+    browser_results = {"enabled": False, "pages_rendered": 0, "new_pages_discovered": 0, "screenshots_captured": 0, "errors": []}
+    if config.render_js:
+        from browser_renderer import BrowserRenderError, enrich_with_browser
+        try:
+            browser_results = await enrich_with_browser(crawler)
+            pages = crawler.pages
+            edges = crawler._resolve_edges(crawler.edges)
+        except BrowserRenderError as exc:
+            browser_results = {
+                "enabled": True, "pages_rendered": 0, "new_pages_discovered": 0,
+                "screenshots_captured": 0, "errors": [str(exc)],
+            }
+            progress.note(f"JS rendering unavailable: {exc}")
+
     start_url_resolved = crawler_start_url(config, pages)
 
     # A crawl that fetched nothing real (blocked by robots.txt, bot-detected,
@@ -197,8 +211,13 @@ async def run_audit(
     audit_data = {
         "crawl_warning": crawl_warning,
         "truncation_notice": truncation_notice,
+        "browser_rendering": browser_results,
         "meta": {
             "start_url": config.start_url,
+            "js_rendering_enabled": bool(config.render_js),
+            "browser_pages_rendered": browser_results.get("pages_rendered", 0),
+            "browser_new_pages_discovered": browser_results.get("new_pages_discovered", 0),
+            "browser_screenshots_captured": browser_results.get("screenshots_captured", 0),
             "pages_crawled": len(pages),
             "pages_errored": progress.pages_errored,
             "max_pages_configured": config.max_pages,
@@ -228,6 +247,22 @@ async def run_audit(
                 "external_script_count": rec.external_script_count,
                 "error": rec.error,
                 "template_fingerprint": rec.template_fingerprint,
+                "rendered": rec.rendered,
+                "render_ms": round(rec.render_ms, 1),
+                "rendered_height": rec.rendered_height,
+                "horizontal_overflow": rec.horizontal_overflow,
+                "rendered_button_count": rec.rendered_button_count,
+                "rendered_form_count": rec.rendered_form_count,
+                "rendered_input_count": rec.rendered_input_count,
+                "rendered_cta_count": rec.rendered_cta_count,
+                "rendered_nav_link_count": rec.rendered_nav_link_count,
+                "rendered_dialog_count": rec.rendered_dialog_count,
+                "rendered_tab_count": rec.rendered_tab_count,
+                "rendered_accordion_count": rec.rendered_accordion_count,
+                "js_error_count": len(rec.js_errors),
+                "console_error_count": len(rec.console_errors),
+                "screenshot_path": rec.screenshot_path,
+                "render_error": rec.render_error,
             }
             for url, rec in pages.items()
         },

@@ -45,6 +45,24 @@
   </div>
   {% endif %}
 
+  {% if data.browser_rendering and data.browser_rendering.enabled %}
+  <div class="section" data-audience="ux">
+    <div class="section-head"><h2>JavaScript Rendering &amp; Visual Evidence</h2><div class="desc">Rendered with Chromium so client-side navigation and interactive content can be inspected instead of relying only on server-sent HTML.</div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="v">{{ data.browser_rendering.pages_rendered }}</div><div class="l">Pages rendered</div></div>
+      <div class="stat"><div class="v">{{ data.browser_rendering.new_pages_discovered }}</div><div class="l">JS-only pages discovered</div></div>
+      <div class="stat"><div class="v">{{ data.browser_rendering.screenshots_captured }}</div><div class="l">Screenshots captured</div></div>
+      <div class="stat"><div class="v">{{ data.browser_rendering.errors|length }}</div><div class="l">Render errors</div></div>
+    </div>
+    {% if data.browser_rendering.errors %}
+    <div class="card" style="margin-top:16px; border:1px solid var(--amber);">
+      <h3 style="font-size:14px; margin:0 0 8px;">Browser rendering notes</h3>
+      {% for error in data.browser_rendering.errors[:10] %}<p class="small-dim" style="margin:0 0 5px;">{{ error }}</p>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if data.truncation_notice %}
   <div class="section" data-audience="all">
     <div class="card" style="border: 2px solid var(--amber); background: rgba(184,134,43,0.06);">
@@ -665,6 +683,7 @@
               <th data-key="word_count">Words</th>
               <th data-key="path_depth">Path Depth</th>
               <th data-key="click_depth">Click Depth</th>
+              <th data-key="rendered">JS Rendered</th>
               <th data-key="flags">Flags</th>
             </tr>
           </thead>
@@ -777,6 +796,7 @@ function renderTable() {
       <td>${p.word_count}</td>
       <td>${p.path_depth}</td>
       <td>${p.click_depth ?? '—'}</td>
+      <td>${p.rendered ? (p.screenshot_path ? `<a href="${p.screenshot_path}" target="_blank">Yes</a>` : 'Yes') : 'No'}</td>
       <td>${flagsFor(p)}</td>
     </tr>
   `).join('');

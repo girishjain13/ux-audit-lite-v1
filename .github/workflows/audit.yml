@@ -63,6 +63,14 @@ on:
         description: "Optional: what the client said the page count is, for a variance report against what's actually crawled. Leave blank to skip."
         required: false
         default: ""
+      render_js:
+        description: "Render pages with Chromium/Playwright to execute JavaScript and capture screenshots. Slower; use for JS-heavy sites."
+        type: boolean
+        default: false
+      browser_max_pages:
+        description: "Maximum pages to render in Chromium when JS rendering is enabled (cap 100)."
+        required: false
+        default: "50"
 
 permissions:
   contents: read
@@ -94,6 +102,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Install Chromium (only when JS rendering is enabled)
+        if: ${{ inputs.render_js }}
+        run: python -m playwright install --with-deps chromium
+
       - name: Run audit
         env:
           START_URL: ${{ inputs.start_url }}
@@ -118,6 +130,8 @@ jobs:
           INCLUDE_URL_PATTERNS: ${{ inputs.include_url_patterns }}
           EXCLUDE_URL_PATTERNS: ${{ inputs.exclude_url_patterns }}
           CLIENT_STATED_PAGE_COUNT: ${{ inputs.client_stated_page_count }}
+          RENDER_JS: ${{ inputs.render_js }}
+          BROWSER_MAX_PAGES: ${{ inputs.browser_max_pages }}
         run: python run_audit_cli.py
 
       - uses: actions/upload-pages-artifact@v3

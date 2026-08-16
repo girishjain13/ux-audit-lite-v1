@@ -106,6 +106,12 @@ class CrawlConfig:
     # provided," not "zero."
     client_stated_page_count: Optional[int] = None
 
+    # Optional JavaScript/browser rendering. Disabled by default so existing
+    # HTTP-only runs remain fast and do not require a Chromium installation.
+    render_js: bool = False
+    browser_max_pages: int = 50
+    browser_timeout: float = 25.0
+
 
 class AsyncCrawler:
     """Breadth-first crawler. Produces a dict[url] -> PageRecord and an

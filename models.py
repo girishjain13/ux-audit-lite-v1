@@ -89,6 +89,30 @@ class PageRecord:
     has_mixed_content: bool = False
     has_noindex: bool = False
 
+    # Optional browser-rendered UX signals. These are populated only when
+    # CrawlConfig.render_js is enabled; keeping them on PageRecord lets the
+    # existing analyzers/report continue to work without a second data model.
+    rendered: bool = False
+    render_ms: float = 0.0
+    rendered_title: str = ""
+    rendered_height: int = 0
+    viewport_width: int = 0
+    viewport_height: int = 0
+    horizontal_overflow: bool = False
+    rendered_button_count: int = 0
+    rendered_form_count: int = 0
+    rendered_input_count: int = 0
+    rendered_cta_count: int = 0
+    rendered_cta_labels: list = field(default_factory=list)
+    rendered_nav_link_count: int = 0
+    rendered_dialog_count: int = 0
+    rendered_tab_count: int = 0
+    rendered_accordion_count: int = 0
+    js_errors: list = field(default_factory=list)
+    console_errors: list = field(default_factory=list)
+    screenshot_path: Optional[str] = None
+    render_error: Optional[str] = None
+
 
 @dataclass
 class CrawlProgress:
