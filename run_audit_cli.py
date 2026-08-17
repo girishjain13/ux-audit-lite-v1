@@ -69,7 +69,7 @@ async def main() -> int:
         return 1
 
     max_pages = int(os.environ.get("MAX_PAGES", "5000"))
-    max_depth = int(os.environ.get("MAX_DEPTH", "12"))
+    max_depth = int(os.environ.get("MAX_DEPTH") or "12")
     concurrency = int(os.environ.get("CONCURRENCY", "8"))
     respect_robots = _env_bool("RESPECT_ROBOTS", True)
     use_sitemap = _env_bool("USE_SITEMAP", True)
