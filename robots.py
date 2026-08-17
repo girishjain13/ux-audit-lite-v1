@@ -26,7 +26,11 @@ class RobotsInfo:
                 self._loaded = True
                 for line in lines:
                     if line.lower().startswith("sitemap:"):
-                        self.sitemap_urls.append(line.split(":", 1)[1].strip())
+                        raw_sitemap = line.split(":", 1)[1].strip()
+                        sitemap_url = urljoin(self.base_url, raw_sitemap)
+                        parsed_sitemap = urlparse(sitemap_url)
+                        if parsed_sitemap.scheme in ("http", "https") and parsed_sitemap.netloc:
+                            self.sitemap_urls.append(sitemap_url)
         except (httpx.HTTPError, httpx.InvalidURL):
             # No robots.txt / unreachable -> treat as "allow everything"
             self._loaded = False
@@ -51,13 +55,16 @@ class RobotsInfo:
             parsed = urlparse(self.base_url)
             sitemaps = [f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"]
 
-        def _extract(root, ns) -> dict:
+        def _extract(root, ns, sitemap_url: str) -> dict:
             out = {}
             for url_el in root.findall(".//sm:url", ns):
                 loc = url_el.find("sm:loc", ns)
                 lastmod = url_el.find("sm:lastmod", ns)
                 if loc is not None and loc.text:
-                    out[loc.text] = lastmod.text if lastmod is not None else None
+                    resolved = urljoin(sitemap_url, loc.text.strip())
+                    parsed = urlparse(resolved)
+                    if parsed.scheme in ("http", "https") and parsed.netloc:
+                        out[resolved] = lastmod.text if lastmod is not None else None
             return out
 
         for sitemap_url in sitemaps[:5]:
@@ -75,11 +82,11 @@ class RobotsInfo:
                             child_resp = await client.get(child, timeout=10.0)
                             if child_resp.status_code == 200:
                                 child_root = ET.fromstring(child_resp.content)
-                                found.update(_extract(child_root, ns))
+                                found.update(_extract(child_root, ns, child))
                         except Exception:
                             continue
                 else:
-                    found.update(_extract(root, ns))
+                    found.update(_extract(root, ns, sitemap_url))
             except Exception:
                 continue
             if len(found) >= cap:
