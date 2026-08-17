@@ -1,13 +1,9 @@
 """Ties the crawler and analyzers together into a single audit run.
 
-This is the GitHub-Pages-focused build: it deliberately does not include
-JS rendering (Playwright), PageSpeed performance sampling, or git-committed
-run history — those specifically caused repeated GitHub Actions/Pages
-deployment failures (browser install steps, slow external API calls, and a
-mid-job git push all fighting with the deploy step). Everything else from
-the full engine is kept: heuristics, keywords, integrations, feature
-matrix, journey maps, UX Lead assessment, external link checks, Basic Auth.
-The full-featured build (Streamlit/Docker) lives in the sibling project.
+GitHub-Pages-focused audit engine. Playwright is optional but supported on
+GitHub Actions. When enabled, rendered DOM evidence replaces server-shell
+HTML for per-page analysis, and low-confidence loading shells are excluded
+from scoring instead of being converted into false-positive findings.
 """
 from __future__ import annotations
 
@@ -50,6 +46,15 @@ async def run_audit(
 
     start_url_resolved = crawler_start_url(config, pages)
 
+    # Only analyze HTML pages with usable evidence. When browser rendering is
+    # enabled, a page that remains a loading shell is not allowed to create
+    # accessibility/content/SEO false positives.
+    analysis_pages = {
+        url: rec for url, rec in pages.items()
+        if rec.resource_type == "html" and rec.status_code and rec.status_code < 400 and rec.analysis_eligible
+    }
+    rendered_pages = sum(1 for rec in pages.values() if rec.rendered)
+    low_confidence_pages = sum(1 for rec in pages.values() if rec.resource_type == "html" and rec.status_code and rec.status_code < 400 and not rec.analysis_eligible)
     # A crawl that fetched nothing real (blocked by robots.txt, bot-detected,
     # the target down, etc.) still produces *some* score — the math treats
     # "zero issues found in zero real pages" the same as "found and checked
@@ -90,6 +95,19 @@ async def run_audit(
         )
 
     ia_results = ia.run_ia_analysis(pages, edges, start_url_resolved)
+    ia_edge_density = ia_results["graph_edge_count"] / max(pages_with_real_data, 1)
+    ia_results["reliable"] = not (
+        pages_with_real_data >= 10
+        and ia_results["graph_edge_count"] == 0
+    )
+    if config.render_js and pages_with_real_data >= 10 and rendered_pages < max(3, int(pages_with_real_data * 0.25)):
+        ia_results["reliable"] = False
+    ia_results["confidence"] = "high" if ia_results["reliable"] else "low"
+    ia_results["reliability_reason"] = (
+        "Internal-link graph is sufficiently populated from crawled/rendered HTML."
+        if ia_results["reliable"] else
+        "Internal-link evidence is incomplete; orphan/click-depth findings are excluded from scoring until enough rendered HTML is available."
+    )
 
     # Distinct from the above: a crawl can fetch plenty of real 200-status
     # pages yet still end up with almost everything showing as orphaned.
@@ -135,36 +153,42 @@ async def run_audit(
                 f"pages' actual HTML before trusting the orphan numbers below at face value."
             )
 
-    content_results = content.run_content_analysis(pages)
-    a11y_results = accessibility.run_accessibility_analysis(pages)
-    seo_results = seo.run_seo_analysis(pages)
+    analysis_coverage_pct = round(100 * len(analysis_pages) / max(pages_with_real_data, 1), 1)
+    if config.render_js and rendered_pages == 0:
+        crawl_warning = (crawl_warning + " " if crawl_warning else "") + "JavaScript rendering was enabled, but no pages were rendered successfully; DOM-dependent findings are not reliable."
+    elif config.render_js and low_confidence_pages:
+        crawl_warning = (crawl_warning + " " if crawl_warning else "") + f"{low_confidence_pages} HTML page(s) returned an incomplete/loading DOM and were excluded from content, accessibility and SEO scoring."
+
+    content_results = content.run_content_analysis(analysis_pages)
+    a11y_results = accessibility.run_accessibility_analysis(analysis_pages)
+    seo_results = seo.run_seo_analysis(analysis_pages)
     url_health_results = url_health.run_url_health_analysis(pages)
     freshness_results = freshness.run_freshness_analysis(pages)
     media_results = media.run_media_analysis(
         crawler.image_domain_counts, crawler.video_embed_count,
         crawler.document_extension_counts, crawler.document_link_examples,
     )
-    locale_results = locale.run_locale_analysis(pages)
-    risk_results = risk.run_risk_analysis(pages, config.start_url, crawler.privacy_policy_url_found)
+    locale_results = locale.run_locale_analysis(analysis_pages)
+    risk_results = risk.run_risk_analysis(analysis_pages, config.start_url, crawler.privacy_policy_url_found)
     tech_fingerprint_results = tech_fingerprint.run_tech_fingerprint_analysis(crawler.tech_signals, len(pages))
     ssl_result = await asyncio.to_thread(risk.check_ssl_expiry, config.start_url)
-    component_results = components.run_component_analysis(crawler.component_hits, len(pages))
+    component_results = components.run_component_analysis(crawler.component_hits, len(analysis_pages))
     score_results = scoring.run_scoring(
-        ia_results, content_results, a11y_results, seo_results, len(pages),
+        ia_results, content_results, a11y_results, seo_results, len(analysis_pages),
         url_health_results, freshness_results, media_results, locale_results, risk_results,
         component_results,
     )
     keyword_results = keywords.run_keyword_analysis(
-        crawler.global_word_counts, crawler.global_bigram_counts, crawler.global_doc_freq, len(pages)
+        crawler.global_word_counts, crawler.global_bigram_counts, crawler.global_doc_freq, len(analysis_pages)
     )
     integration_results = integrations.run_integration_analysis(
-        crawler.integration_hits, crawler.unrecognized_script_domains, crawler.all_external_scripts, pages, len(pages)
+        crawler.integration_hits, crawler.unrecognized_script_domains, crawler.all_external_scripts, analysis_pages, len(analysis_pages)
     )
     feature_matrix_results = feature_matrix.run_feature_matrix(
         crawler.feature_hits, integration_results["detected"]
     )
-    template_results = templates.run_template_analysis(pages)
-    journey_map = journey.build_journey_map(pages, ia_results["click_depths"], custom_personas=custom_personas)
+    template_results = templates.run_template_analysis(analysis_pages)
+    journey_map = journey.build_journey_map(analysis_pages, ia_results["click_depths"], custom_personas=custom_personas)
     heuristics_results = classify_into_heuristics(score_results["action_plan"])
     plain_summary = build_plain_summary(score_results, ia_results, content_results, a11y_results)
     lead_assessment = build_lead_assessment(
@@ -220,6 +244,11 @@ async def run_audit(
             "browser_screenshots_captured": browser_results.get("screenshots_captured", 0),
             "pages_crawled": len(pages),
             "pages_errored": progress.pages_errored,
+            "pages_analyzed": len(analysis_pages),
+            "analysis_coverage_pct": analysis_coverage_pct,
+            "low_confidence_pages": low_confidence_pages,
+            "rendered_pages": rendered_pages,
+            "analysis_mode": "rendered-dom" if config.render_js else "server-html",
             "max_pages_configured": config.max_pages,
             "started_at": progress.started_at.isoformat(),
             "finished_at": progress.finished_at.isoformat(),
@@ -263,6 +292,11 @@ async def run_audit(
                 "console_error_count": len(rec.console_errors),
                 "screenshot_path": rec.screenshot_path,
                 "render_error": rec.render_error,
+                "resource_type": rec.resource_type,
+                "analysis_eligible": rec.analysis_eligible,
+                "analysis_confidence": rec.analysis_confidence,
+                "rendered_text_length": rec.rendered_text_length,
+                "rendered_dom_complete": rec.rendered_dom_complete,
             }
             for url, rec in pages.items()
         },

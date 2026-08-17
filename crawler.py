@@ -315,6 +315,9 @@ class AsyncCrawler:
                 self.redirect_map[url] = str(resp.url)
             content_type = resp.headers.get("content-type", "")
             record.content_type = content_type
+            record.resource_type = self._resource_type(record.url, content_type)
+            record.analysis_eligible = record.resource_type == "html"
+            record.analysis_confidence = "medium" if record.analysis_eligible else "excluded"
             record.last_modified = resp.headers.get("last-modified") or self.sitemap_lastmod.get(record.url) or self.sitemap_lastmod.get(url)
             self._detect_tech_from_headers(resp.headers)
 
@@ -344,6 +347,99 @@ class AsyncCrawler:
             self.pages[url] = record
             self.progress.pages_errored += 1
             self.progress.note(f"Failed: {url} ({exc.__class__.__name__})")
+
+    @staticmethod
+    def _resource_type(url: str, content_type: str = "") -> str:
+        path = urlparse(url).path.lower()
+        if "text/html" in (content_type or "").lower() or path.endswith(("/", ".html", ".htm")) or "." not in path.rsplit("/", 1)[-1]:
+            return "html"
+        if path.endswith(".pdf") or "application/pdf" in (content_type or "").lower():
+            return "pdf"
+        if (content_type or "").lower().startswith("image/"):
+            return "image"
+        if (content_type or "").lower().startswith("video/"):
+            return "video"
+        if (content_type or "").lower().startswith("audio/"):
+            return "audio"
+        return "other"
+
+    def _apply_rendered_html(self, record: PageRecord, html: str, final_url: str, queue: deque | None = None):
+        """Replace server-shell HTML signals with the browser-rendered DOM.
+
+        This deliberately updates per-page evidence only; site-wide counters
+        are not re-counted here, avoiding double counting the same page.
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        body = soup.find("body")
+        text = body.get_text(separator=" ", strip=True) if body else soup.get_text(separator=" ", strip=True)
+        words = text.split()
+        record.url = final_url
+        record.content_type = "text/html"
+        record.resource_type = "html"
+        record.rendered_text_length = len(text)
+        record.rendered_dom_complete = not (
+            len(text) < 120 and bool(soup.select(".loader, .loading, .skeleton, [aria-busy=\"true\"]"))
+        )
+        record.analysis_eligible = record.rendered_dom_complete
+        record.analysis_confidence = "high" if record.rendered_dom_complete else "low"
+        if soup.title and soup.title.string:
+            record.title = soup.title.string.strip()
+        meta_desc = soup.find("meta", attrs={"name": "description"})
+        record.meta_description = (meta_desc.get("content") or "").strip() if meta_desc else ""
+        canonical = soup.find("link", attrs={"rel": "canonical"})
+        record.canonical = (canonical.get("href") or "").strip() if canonical else ""
+        record.lang = (soup.find("html").get("lang") or "").strip() if soup.find("html") else ""
+        record.h1_list = [h.get_text(strip=True) for h in soup.find_all("h1")]
+        record.heading_sequence = [h.name for h in soup.find_all(["h1","h2","h3","h4","h5","h6"])]
+        record.word_count = len(words)
+        record.reading_time_seconds = int(len(words) / 3.5)
+        record.text_hash = hashlib.sha1(" ".join(words).encode("utf-8", "ignore")).hexdigest()
+        record.is_thin_content = record.word_count < 150
+        record.template_fingerprint = self._structural_fingerprint(soup)
+        record.rendered_height_estimate = 80 + len(soup.find_all(["p","div","section","article","li","img","h1","h2","h3"])) * 45
+        images = soup.find_all("img")
+        record.images_total = len(images)
+        record.images_missing_alt = sum(1 for img in images if not img.get("alt", "").strip())
+        forms = soup.find_all("form")
+        record.forms_total = len(forms)
+        missing_labels = 0
+        for form in forms:
+            for inp in form.find_all(["input","textarea","select"]):
+                if inp.get("type", "text") in ("hidden","submit","button"):
+                    continue
+                if not (inp.get("aria-label") or (inp.get("id") and soup.find("label", attrs={"for": inp.get("id")}))):
+                    missing_labels += 1
+        record.inputs_missing_label = missing_labels
+        record.aria_landmark_count = len(soup.find_all(["header","nav","main","aside","footer"])) + len(soup.find_all(attrs={"role": True}))
+        record.og_tags = {o.get("property"): o.get("content", "") for o in soup.find_all("meta", attrs={"property": lambda x: x and x.startswith("og:")})}
+        record.has_schema_org = bool(soup.find_all("script", attrs={"type":"application/ld+json"}))
+        record.schema_types = [(x.string or "")[:200] for x in soup.find_all("script", attrs={"type":"application/ld+json"})]
+        record.internal_links_out = []
+        record.external_links_out_count = 0
+        base = final_url
+        for a in soup.find_all("a", href=True):
+            href = a["href"].strip()
+            if not href or href.startswith(("mailto:","tel:","javascript:","#")):
+                continue
+            absolute = urljoin(base, href)
+            if any(absolute.lower().split("?")[0].endswith(ext) for ext in SKIP_EXTENSIONS):
+                continue
+            normalized = normalize_url(absolute)
+            if same_site(normalized, self._root_netloc, self.config.include_subdomains):
+                record.internal_links_out.append(normalized)
+                self.edges.append((final_url, normalized))
+                if queue is not None and normalized not in self._seen and len(self._seen) < self.config.max_pages * 3 and self._url_allowed(normalized):
+                    self._seen.add(normalized)
+                    queue.append((normalized, record.depth + 1))
+            else:
+                record.external_links_out_count += 1
+        scripts = soup.find_all("script")
+        record.script_count = len(scripts)
+        record.external_script_count = sum(1 for x in scripts if x.get("src"))
+        if record.rendered_dom_complete:
+            record.analysis_confidence = "high"
+        else:
+            record.analysis_confidence = "low"
 
     def _url_allowed(self, url: str) -> bool:
         """Include/exclude URL-pattern filtering — plain substring match,

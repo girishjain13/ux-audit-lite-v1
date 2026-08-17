@@ -4,35 +4,31 @@ name: Run audit and publish to GitHub Pages
 # The crawl runs on GitHub's runner (a real Python VM — no browser CORS
 # limits), and the resulting static report is published via GitHub Pages.
 #
-# This workflow installs Chromium only when the selected audit mode needs it
-# and deliberately avoids any mid-job git commit/push. The report is uploaded
-# directly as a Pages artifact after the audit finishes.
+# This workflow deliberately does NOT include a Playwright browser install
+# step or a mid-job git-commit step — both were tried in an earlier version
+# of this project and repeatedly caused the Pages deploy to fail or hang.
+# JS rendering and run-history trend tracking are only in the sibling
+# Streamlit/Docker build now, which doesn't share this deploy pipeline.
 on:
   workflow_dispatch:
     inputs:
       start_url:
         description: "Site to audit (must include http:// or https://)"
         required: true
+        type: string
       audit_mode:
-        description: "Choose a fast high-level sample or a deeper site audit"
+        description: "Choose how deeply to audit the site"
         required: true
         type: choice
+        default: quick
         options:
           - quick
           - full
-        default: quick
-      max_pages:
-        description: "Full audit page limit (ignored for Quick Scan; cap 5000)"
+      full_max_pages:
+        description: "Full audit page limit (used only in Full mode; 100–5000)"
         required: false
         default: "500"
-      max_depth:
-        description: "Max crawl depth"
-        required: false
-        default: "12"
-      concurrency:
-        description: "Concurrent requests"
-        required: false
-        default: "8"
+        type: string
       respect_robots:
         description: "Respect robots.txt"
         type: boolean
@@ -46,37 +42,35 @@ on:
         type: boolean
         default: false
       check_external_links:
-        description: "Spot-check a sample of external links for broken (4xx/5xx) targets"
+        description: "Spot-check external links"
         type: boolean
         default: false
       custom_user_agent:
-        description: "Optional custom User-Agent (only for sites you're authorized to audit whose WAF blocks the default identifier)"
+        description: "Optional custom User-Agent for authorized audits"
         required: false
         default: ""
+        type: string
       custom_personas:
-        description: "Optional custom persona(s) for journey mapping — see DEPLOY.md for the format. No AI key needed, purely keyword-matched."
+        description: "Optional custom persona(s) for journey mapping"
         required: false
         default: ""
+        type: string
       include_url_patterns:
-        description: "Only crawl URLs containing at least one of these (comma-separated plain substrings, e.g. '/blog/,/products/'). Leave blank for no restriction."
+        description: "Optional comma-separated URL substrings to include"
         required: false
         default: ""
+        type: string
       exclude_url_patterns:
-        description: "Never crawl URLs containing any of these (comma-separated plain substrings, e.g. '/admin/,/checkout/'). Leave blank to exclude nothing."
+        description: "Optional comma-separated URL substrings to exclude"
         required: false
         default: ""
+        type: string
       client_stated_page_count:
-        description: "Optional: what the client said the page count is, for a variance report against what's actually crawled. Leave blank to skip."
+        description: "Optional client-stated page count for variance analysis"
         required: false
         default: ""
-      render_js:
-        description: "Render pages with Chromium/Playwright to execute JavaScript and capture screenshots."
-        type: boolean
-        default: true
-      browser_max_pages:
-        description: "Full audit browser-rendered page limit (Quick Scan uses 10; cap 100)."
-        required: false
-        default: "50"
+        type: string
+
 
 permissions:
   contents: read
@@ -108,15 +102,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Install Chromium (only when JS rendering is enabled)
-        if: ${{ inputs.render_js || inputs.audit_mode == 'quick' }}
+      - name: Install Chromium
         run: python -m playwright install --with-deps chromium
 
       - name: Run audit
         env:
           START_URL: ${{ inputs.start_url }}
-          AUDIT_MODE: ${{ inputs.audit_mode }}
-          MAX_PAGES: ${{ inputs.max_pages }}
+          MAX_PAGES: ${{ inputs.audit_mode == 'quick' && '25' || inputs.full_max_pages }}
           MAX_DEPTH: ${{ inputs.max_depth }}
           CONCURRENCY: ${{ inputs.concurrency }}
           RESPECT_ROBOTS: ${{ inputs.respect_robots }}
@@ -137,8 +129,10 @@ jobs:
           INCLUDE_URL_PATTERNS: ${{ inputs.include_url_patterns }}
           EXCLUDE_URL_PATTERNS: ${{ inputs.exclude_url_patterns }}
           CLIENT_STATED_PAGE_COUNT: ${{ inputs.client_stated_page_count }}
-          RENDER_JS: ${{ inputs.render_js }}
-          BROWSER_MAX_PAGES: ${{ inputs.browser_max_pages }}
+          # Both modes use Chromium. Quick mode renders a representative sample;
+          # Full mode renders a larger sample while the HTTP crawler covers the configured page set.
+          RENDER_JS: "true"
+          BROWSER_MAX_PAGES: ${{ inputs.audit_mode == 'quick' && '10' || '50' }}
         run: python run_audit_cli.py
 
       - uses: actions/upload-pages-artifact@v3

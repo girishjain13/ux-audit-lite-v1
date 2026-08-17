@@ -13,6 +13,8 @@ def _pct_score(bad: int, total: int) -> float:
 
 
 def score_ia(ia: dict, total_pages: int) -> float:
+    if ia.get("reliable") is False:
+        return 50.0  # neutral placeholder; excluded from the overall score below
     orphan_score = _pct_score(ia["orphan_page_count"], max(total_pages, 1))
     depth_score = _pct_score(ia["pages_over_3_clicks"], max(total_pages, 1))
     return round((orphan_score * 0.5 + depth_score * 0.5), 1)
@@ -54,11 +56,11 @@ def build_action_plan(
     and what the report's persona tabs filter the action plan by.
     """
     items = []
-    if ia["orphan_page_count"]:
+    if ia.get("reliable", True) and ia["orphan_page_count"]:
         items.append({"priority": "high", "area": "IA", "impact": "High", "effort": "Medium",
                       "effort_bucket": "config", "personas": ["ux", "business"],
                       "action": f"Fix {ia['orphan_page_count']} orphan page(s) with no internal inbound links."})
-    if ia["pages_over_3_clicks"]:
+    if ia.get("reliable", True) and ia["pages_over_3_clicks"]:
         items.append({"priority": "medium", "area": "IA", "impact": "Medium", "effort": "Medium",
                       "effort_bucket": "config", "personas": ["ux", "business"],
                       "action": f"Reduce click depth for {ia['pages_over_3_clicks']} page(s) currently more than 3 clicks from the homepage."})
@@ -106,7 +108,9 @@ def run_scoring(
     content_score = score_content(content, total_pages)
     a11y_score = score_accessibility(a11y)
     seo_score = score_seo(seo, total_pages)
-    ux_maturity = round((ia_score + content_score + a11y_score + seo_score) / 4, 1)
+    pillar_scores = {"IA": ia_score, "Content": content_score, "Accessibility": a11y_score, "SEO": seo_score}
+    included_pillars = [name for name, score in pillar_scores.items() if not (name == "IA" and ia.get("reliable") is False)]
+    ux_maturity = round(sum(pillar_scores[name] for name in included_pillars) / max(len(included_pillars), 1), 1)
 
     def band(score: float) -> str:
         if score >= 85:
@@ -124,5 +128,8 @@ def run_scoring(
         "seo_score": seo_score,
         "ux_maturity_score": ux_maturity,
         "ux_maturity_band": band(ux_maturity),
+        "included_pillars": included_pillars,
+        "excluded_pillars": [name for name in pillar_scores if name not in included_pillars],
+        "score_confidence": "high" if not ia.get("reliable") is False else "medium",
         "action_plan": build_action_plan(ia, content, a11y, seo, url_health, freshness, media, locale, risk, components),
     }

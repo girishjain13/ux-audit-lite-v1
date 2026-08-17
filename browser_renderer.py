@@ -95,7 +95,13 @@ async def enrich_with_browser(crawler, output_dir: str = "docs/evidence") -> dic
     new_pages = 0
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=True)
+        try:
+            browser = await pw.chromium.launch(headless=True)
+        except Exception as exc:
+            raise BrowserRenderError(
+                "Chromium could not be launched. Ensure the workflow runs 'python -m playwright install --with-deps chromium' before the audit. "
+                f"Original error: {exc.__class__.__name__}: {str(exc)[:250]}"
+            ) from exc
         context_kwargs = {
             "ignore_https_errors": not cfg.verify_ssl,
             "viewport": {"width": 1440, "height": 900},
@@ -139,6 +145,9 @@ async def enrich_with_browser(crawler, output_dir: str = "docs/evidence") -> dic
 
                     html = await page.content()
                     title = await page.title()
+                    if response is not None:
+                        record.status_code = response.status
+                        record.content_type = response.headers.get("content-type", "text/html")
                     viewport = await page.evaluate("""() => ({
                         width: window.innerWidth,
                         height: window.innerHeight,
@@ -185,6 +194,10 @@ async def enrich_with_browser(crawler, output_dir: str = "docs/evidence") -> dic
                     record.url = final_url
                     record.status_code = response.status if response else 200
                     record.content_type = (response.headers.get("content-type", "text/html") if response else "text/html")
+                    # The rendered DOM is the authoritative evidence for JS-heavy pages.
+                    # Re-parse it into the same PageRecord so content, SEO, accessibility,
+                    # template and IA analyzers do not accidentally inspect the server shell.
+                    crawler._apply_rendered_html(record, html, final_url)
                     record.rendered = True
                     record.render_ms = (time.monotonic() - t0) * 1000
                     record.rendered_title = title or ""

@@ -112,6 +112,13 @@ class PageRecord:
     console_errors: list = field(default_factory=list)
     screenshot_path: Optional[str] = None
     render_error: Optional[str] = None
+    # Evidence quality / analysis eligibility. These prevent a loading shell,
+    # PDF, image, or failed request from being treated as a normal HTML page.
+    resource_type: str = "html"
+    analysis_eligible: bool = True
+    analysis_confidence: str = "medium"
+    rendered_text_length: int = 0
+    rendered_dom_complete: bool = False
 
 
 @dataclass

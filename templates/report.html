@@ -14,11 +14,9 @@
 <div class="masthead">
   <div class="kicker">UX &amp; Information Architecture Audit</div>
   <h1>{{ data.meta.start_url }}</h1>
-  <div class="sub">{{ data.meta.audit_mode_label }} generated from the pages reached by this crawl — read it the way you'd read a colleague's design review, not a server log.</div>
+  <div class="sub">A heuristic evaluation generated from a {{ data.meta.pages_crawled }}-page crawl — read it the way you'd read a colleague's design review, not a server log.</div>
   <div class="meta-row">
-    <span><b>Audit mode</b> {{ data.meta.audit_mode_label }}</span>
     <span><b>Pages reviewed</b> {{ data.meta.pages_crawled }}</span>
-    <span><b>Pages discovered</b> {{ data.meta.pages_discovered }}</span>
     <span><b>Crawled</b> {{ data.meta.finished_at[:10] }}</span>
     <span><b>Duration</b> {{ data.meta.elapsed_seconds }}s</span>
   </div>
@@ -35,22 +33,18 @@
     <div class="section-head"><h2>Audit Coverage</h2><div class="desc">A quick check of how much of the site was actually inspected before interpreting the findings.</div></div>
     <div class="stat-row">
       <div class="stat"><div class="v">{{ data.meta.pages_crawled }}</div><div class="l">Pages crawled</div></div>
-      <div class="stat"><div class="v">{{ data.meta.pages_discovered }}</div><div class="l">Pages discovered</div></div>
-      <div class="stat"><div class="v">{{ data.meta.coverage_percent }}%</div><div class="l">Discovered-page coverage</div></div>
+      <div class="stat"><div class="v">{{ data.meta.pages_analyzed }}</div><div class="l">Pages analyzed</div></div>
+      <div class="stat"><div class="v">{{ data.meta.analysis_coverage_pct }}%</div><div class="l">Analysis coverage</div></div>
+      <div class="stat"><div class="v">{{ data.meta.rendered_pages }}</div><div class="l">Pages rendered</div></div>
       <div class="stat"><div class="v">{{ data.meta.pages_errored }}</div><div class="l">Page errors</div></div>
     </div>
-    {% if data.meta.audit_mode == 'quick' %}
-    <div class="card" style="border:2px solid var(--line); background:rgba(220,231,239,0.35); margin-bottom:16px;">
-      <p style="margin:0;color:var(--ink);"><b>Quick High-Level Scan:</b> this report intentionally uses a 25-page sample to identify high-value UX, content, IA, accessibility, and business signals quickly. It is not a full-site audit.</p>
-    </div>
-    {% endif %}
     {% if data.truncation_notice %}
     <div class="card" style="border:2px solid var(--amber); background:rgba(184,134,43,0.06); margin-bottom:16px;">
       <p style="margin:0;color:var(--ink);">{{ data.truncation_notice }}</p>
     </div>
     {% else %}
     <div class="card" style="border:1px solid var(--line); margin-bottom:16px;">
-      <p style="margin:0;color:var(--ink);">The crawler finished with no discovered pages left waiting at the configured crawl limit. Coverage is complete within the current crawl settings; it does not guarantee that every page on the domain exists in the site's discoverable link/sitemap surface.</p>
+      <p style="margin:0;color:var(--ink);">The crawl reached the end of its discoverable queue. This does not mean every discovered page was successfully analyzable; the analysis coverage above shows how much usable HTML evidence actually contributed to findings.</p>
     </div>
     {% endif %}
   </div>
@@ -60,9 +54,6 @@
   <button class="audience-tab" data-tab="ux" role="tab" aria-selected="true">UX Designer</button>
   <button class="audience-tab" data-tab="content" role="tab" aria-selected="false">Content Strategist</button>
   <button class="audience-tab" data-tab="business" role="tab" aria-selected="false">Business Analyst</button>
-</div>
-<div class="wrap no-print" style="padding-top:8px; padding-bottom:0;">
-  <p class="small-dim" style="margin:0;">The role tabs below are intentionally scoped: each tab shows only findings most relevant to that audience. Shared audit coverage, summary, and scorecard information remains above the tabs.</p>
 </div>
 
 <div class="wrap">
