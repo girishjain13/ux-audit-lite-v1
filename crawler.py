@@ -32,20 +32,31 @@ SKIP_EXTENSIONS = (
 )
 
 
-def normalize_url(url: str) -> str:
-    """Strip fragments and ensure an empty path becomes '/'.
+def normalize_url(url: str, base_url: str | None = None) -> str | None:
+    """Resolve and normalize a crawlable HTTP(S) URL.
 
-    Deliberately does NOT strip trailing slashes: many servers 301-redirect
-    a no-slash directory URL ("/about") to its slash form ("/about/"), and
-    httpx follows that automatically. If we stripped the slash here, the
-    pre-fetch (queued) URL and the post-redirect (crawled/stored) URL would
-    end up as two different strings, which silently breaks link-graph edges
-    between them. Leaving both forms distinct is safer than mismatching.
+    ``href`` values found in HTML and ``loc`` values found in sitemaps may be
+    relative (for example ``/products/123``).  They must be resolved against
+    the page/sitemap URL before being handed to httpx.  Non-web schemes such
+    as ``mailto:``, ``javascript:``, and ``tel:`` are rejected here so every
+    caller gets the same URL-safety behavior.
     """
-    url, _frag = urldefrag(url)
-    parsed = urlparse(url)
+    if not url:
+        return None
+    value = url.strip()
+    if not value:
+        return None
+
+    if base_url:
+        value = urljoin(base_url, value)
+
+    value, _frag = urldefrag(value)
+    parsed = urlparse(value)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return None
+
     path = parsed.path or "/"
-    normalized = parsed._replace(path=path, query=parsed.query)
+    normalized = parsed._replace(path=path)
     return normalized.geturl()
 
 
@@ -198,6 +209,8 @@ class AsyncCrawler:
 
             queue: deque[tuple[str, int]] = deque()
             start = normalize_url(cfg.start_url)
+            if not start:
+                raise ValueError(f"Invalid START_URL: {cfg.start_url!r}")
             queue.append((start, 0))
             self._seen.add(start)
 
@@ -207,7 +220,7 @@ class AsyncCrawler:
                 try:
                     sitemap_lastmod = await robots.discover_sitemap_urls(client, cap=cfg.max_pages * 2)
                     for u, lastmod in sitemap_lastmod.items():
-                        nu = normalize_url(u)
+                        nu = normalize_url(u, cfg.start_url)
                         if lastmod:
                             self.sitemap_lastmod[nu] = lastmod
                         if nu not in self._seen and same_site(nu, self._root_netloc, cfg.include_subdomains):
@@ -424,7 +437,7 @@ class AsyncCrawler:
             absolute = urljoin(base, href)
             if any(absolute.lower().split("?")[0].endswith(ext) for ext in SKIP_EXTENSIONS):
                 continue
-            normalized = normalize_url(absolute)
+            normalized = normalize_url(absolute, base)
             if same_site(normalized, self._root_netloc, self.config.include_subdomains):
                 record.internal_links_out.append(normalized)
                 self.edges.append((final_url, normalized))
@@ -843,7 +856,7 @@ class AsyncCrawler:
             absolute = urljoin(base, href)
             if any(absolute.lower().split("?")[0].endswith(ext) for ext in SKIP_EXTENSIONS):
                 continue
-            normalized = normalize_url(absolute)
+            normalized = normalize_url(absolute, base)
             if same_site(normalized, self._root_netloc, self.config.include_subdomains):
                 internal += 1
                 record.internal_links_out.append(normalized)
@@ -855,7 +868,7 @@ class AsyncCrawler:
             else:
                 external += 1
                 if self.config.check_external_links and len(self.external_link_targets) < self.config.external_link_cap:
-                    ext_normalized = normalize_url(absolute)
+                    ext_normalized = normalize_url(absolute, base)
                     self.external_link_targets.setdefault(ext_normalized, set()).add(record.url)
         record.external_links_out_count = external
 
