@@ -39,8 +39,9 @@ workflow — this page just automates clicking through the Actions tab for
 you, using GitHub's API from your browser.
 
 **From the Actions tab (no token needed):** **Actions** → **"Run audit
-and publish to GitHub Pages"** → **Run workflow** → fill in `start_url` →
-run. Use this if you'd rather not paste a token anywhere, or you're
+and publish to GitHub Pages"** → **Run workflow** → fill in `start_url`,
+choose `quick` or `full`, then run. Quick uses a fixed 25-page sample; Full
+uses the configured page limit (500 by default, up to 5,000). Use this if you'd rather not paste a token anywhere, or you're
 scripting/automating audits yourself.
 
 Either way, when it finishes, the report is at
@@ -51,15 +52,14 @@ right after a run, that's just CDN propagation, not a failure.
 
 ## What this build doesn't do (and why)
 
-An earlier version of this project tried to run JS rendering (Playwright),
-real Core Web Vitals sampling (PageSpeed Insights), and git-committed run
-history all through this same GitHub Actions pipeline. All three
-repeatedly broke the deploy — a browser-install step, slow external API
-calls, and a mid-job `git push` all fighting with the Pages deploy step in
-various combinations. This build leaves all three out entirely, on
-purpose, so there's nothing left that can cause that failure mode again.
-If you want those features, there's a separate Streamlit/Docker build with
-the full feature set — just not deployed through this same pipeline.
+This GitHub Pages build supports Playwright/Chromium rendering, but browser
+rendering is deliberately capped because it is substantially slower than the
+HTTP crawler. Quick Scan renders up to 10 pages; Full Site Audit renders up to
+the configured browser-page limit (50 by default).
+
+It does not collect real Core Web Vitals or persist historical run trends.
+Each workflow run produces one current static report, replacing the previous
+report on the published Pages site.
 
 ## Auditing password-protected / UAT sites
 

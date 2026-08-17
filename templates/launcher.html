@@ -6,7 +6,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>{{ inline_css }}</style>
+<style>{{ inline_css }}
+.mode-card {
+  flex:1; min-width:260px; display:flex; gap:10px; align-items:flex-start;
+  padding:16px; border:1px solid var(--line); border-radius:12px; cursor:pointer;
+  background:var(--paper); transition:border-color .15s, box-shadow .15s, background .15s;
+}
+.mode-card:hover { border-color:var(--ink-dim); }
+.mode-card.selected { border:2px solid var(--coral); background:rgba(193,83,31,.045); box-shadow:0 4px 14px rgba(0,0,0,.05); }
+.mode-card input { margin-top:4px; }
+.mode-card-body { display:flex; flex-direction:column; gap:7px; line-height:1.45; }
+</style>
 </head>
 <body>
 
@@ -25,12 +35,39 @@
         <input type="url" id="start_url" placeholder="https://example.com" required>
       </div>
 
-      <details style="margin-bottom:18px;">
-        <summary style="cursor:pointer; font-size:13px; color:var(--ink-dim); font-weight:600;">Advanced options</summary>
+      <div class="field" style="margin-top:20px;">
+        <div class="field-label">How would you like to audit this site?</div>
+        <div class="field-row" style="margin-top:10px; align-items:stretch;">
+          <label class="mode-card" id="quick-mode-card">
+            <input type="radio" name="audit_mode" id="audit_mode_quick" value="quick" checked>
+            <span class="mode-card-body">
+              <strong>⚡ Quick High-Level Scan</strong>
+              <span class="small-dim">A fast first-pass assessment using a 25-page sample, with JavaScript rendering on up to 10 pages.</span>
+              <span class="small-dim"><b>Best for:</b> early discovery, stakeholder conversations, rapid UX reviews.</span>
+            </span>
+          </label>
+          <label class="mode-card" id="full-mode-card">
+            <input type="radio" name="audit_mode" id="audit_mode_full" value="full">
+            <span class="mode-card-body">
+              <strong>🔎 Full Site Audit</strong>
+              <span class="small-dim">A deeper crawl using your configured page limit, with JavaScript rendering available for the rendered-page sample.</span>
+              <span class="small-dim"><b>Best for:</b> detailed discovery, migration planning, and comprehensive reviews.</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div id="quick-mode-note" class="card" style="margin:14px 0 18px; border:1px solid var(--line); background:rgba(220,231,239,0.35);">
+        <p style="margin:0;"><b>Quick Scan settings:</b> 25 pages · JavaScript rendering on up to 10 pages · optimized for a fast high-level assessment.</p>
+        <p class="small-dim" style="margin:8px 0 0;">The report will clearly identify the audit as a limited sample rather than presenting it as a full-site crawl.</p>
+      </div>
+
+      <details id="advanced-options" style="margin-bottom:18px;">
+        <summary style="cursor:pointer; font-size:13px; color:var(--ink-dim); font-weight:600;">Full audit options</summary>
         <div class="field-row" style="margin-top:14px;">
           <div class="field">
             <label class="field-label">Max Pages (cap 5000)</label>
-            <input type="number" id="max_pages" value="5000" min="1" max="5000">
+            <input type="number" id="max_pages" value="500" min="1" max="5000">
           </div>
           <div class="field">
             <label class="field-label">Max Crawl Depth</label>
@@ -71,7 +108,7 @@
         </div>
         <p class="small-dim" style="margin-top:-4px; margin-bottom:10px;">Comma-separated plain substrings, not regex. Leave both blank to crawl the whole site with no restriction.</p>
         <div class="field-row" style="margin-top:10px; align-items:center;">
-          <label class="checkline"><input type="checkbox" id="render_js"> Enable JavaScript rendering (Chromium)</label>
+          <label class="checkline"><input type="checkbox" id="render_js" checked> Enable JavaScript rendering (Chromium)</label>
           <div class="field" style="max-width:220px;">
             <label class="field-label">Browser pages</label>
             <input type="number" id="browser_max_pages" value="50" min="1" max="100">
@@ -158,6 +195,24 @@ const detected = detectRepo();
 if (detected.owner) document.getElementById('repo_owner').value = detected.owner;
 if (detected.repo) document.getElementById('repo_name').value = detected.repo;
 
+function selectedAuditMode() {
+  return document.querySelector('input[name="audit_mode"]:checked')?.value || 'quick';
+}
+
+function updateAuditModeUI() {
+  const mode = selectedAuditMode();
+  const quick = mode === 'quick';
+  document.getElementById('quick-mode-card').classList.toggle('selected', quick);
+  document.getElementById('full-mode-card').classList.toggle('selected', !quick);
+  document.getElementById('quick-mode-note').style.display = quick ? 'block' : 'none';
+  document.getElementById('advanced-options').style.display = quick ? 'none' : 'block';
+}
+
+document.querySelectorAll('input[name="audit_mode"]').forEach(input => {
+  input.addEventListener('change', updateAuditModeUI);
+});
+updateAuditModeUI();
+
 const rememberedPat = sessionStorage.getItem('audit_pat');
 if (rememberedPat) {
   document.getElementById('pat').value = rememberedPat;
@@ -173,6 +228,7 @@ document.getElementById('start-btn').addEventListener('click', async () => {
   const owner = document.getElementById('repo_owner').value.trim() || detected.owner;
   const repo = document.getElementById('repo_name').value.trim() || detected.repo;
   const branch = document.getElementById('repo_branch').value.trim() || 'main';
+  const auditMode = selectedAuditMode();
 
   if (!startUrl) { errEl.textContent = 'Enter a URL to audit.'; return; }
   if (!pat) { errEl.textContent = 'A personal access token is required to trigger the workflow.'; return; }
@@ -204,7 +260,8 @@ document.getElementById('start-btn').addEventListener('click', async () => {
         ref: branch,
         inputs: {
           start_url: startUrl,
-          max_pages: document.getElementById('max_pages').value,
+          audit_mode: auditMode,
+          max_pages: auditMode === 'quick' ? '25' : document.getElementById('max_pages').value,
           max_depth: document.getElementById('max_depth').value,
           concurrency: document.getElementById('concurrency').value,
           respect_robots: document.getElementById('respect_robots').checked,
@@ -216,8 +273,8 @@ document.getElementById('start-btn').addEventListener('click', async () => {
           include_url_patterns: document.getElementById('include_url_patterns').value,
           exclude_url_patterns: document.getElementById('exclude_url_patterns').value,
           client_stated_page_count: document.getElementById('client_stated_page_count').value,
-          render_js: document.getElementById('render_js').checked,
-          browser_max_pages: document.getElementById('browser_max_pages').value,
+          render_js: auditMode === 'quick' ? true : document.getElementById('render_js').checked,
+          browser_max_pages: auditMode === 'quick' ? '10' : document.getElementById('browser_max_pages').value,
         },
       }),
     });

@@ -68,9 +68,25 @@ async def main() -> int:
         print("ERROR: START_URL must include http:// or https://", file=sys.stderr)
         return 1
 
-    max_pages = int(os.environ.get("MAX_PAGES", "5000"))
-    max_depth = int(os.environ.get("MAX_DEPTH", "12"))
-    concurrency = int(os.environ.get("CONCURRENCY", "8"))
+    audit_mode = os.environ.get("AUDIT_MODE", "full").strip().lower()
+    if audit_mode not in ("quick", "full"):
+        print("ERROR: AUDIT_MODE must be quick or full.", file=sys.stderr)
+        return 1
+
+    # Quick Scan is intentionally opinionated: it samples a small number of
+    # pages, enables JS rendering for a useful set of modern sites, and keeps
+    # the browser budget small enough that the first-pass audit stays fast.
+    # Full Audit respects the supplied page/browser limits.
+    if audit_mode == "quick":
+        max_pages = 25
+        max_depth = 8
+        concurrency = 8
+        render_js = True
+        browser_max_pages = 10
+    else:
+        max_pages = int(os.environ.get("MAX_PAGES", "500"))
+        max_depth = int(os.environ.get("MAX_DEPTH", "12"))
+        concurrency = int(os.environ.get("CONCURRENCY", "8"))
     respect_robots = _env_bool("RESPECT_ROBOTS", True)
     use_sitemap = _env_bool("USE_SITEMAP", True)
     include_subdomains = _env_bool("INCLUDE_SUBDOMAINS", False)
@@ -93,8 +109,9 @@ async def main() -> int:
     exclude_url_patterns = [p.strip() for p in os.environ.get("EXCLUDE_URL_PATTERNS", "").split(",") if p.strip()]
     client_stated_raw = os.environ.get("CLIENT_STATED_PAGE_COUNT", "").strip()
     client_stated_page_count = int(client_stated_raw) if client_stated_raw.isdigit() else None
-    render_js = _env_bool("RENDER_JS", False)
-    browser_max_pages = int(os.environ.get("BROWSER_MAX_PAGES", "50"))
+    if audit_mode == "full":
+        render_js = _env_bool("RENDER_JS", True)
+        browser_max_pages = int(os.environ.get("BROWSER_MAX_PAGES", "50"))
     browser_timeout = float(os.environ.get("BROWSER_TIMEOUT", "25"))
 
     config = CrawlConfig(

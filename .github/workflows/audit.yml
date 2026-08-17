@@ -1,68 +1,156 @@
-name: Run UX Audit and Publish
+name: Run audit and publish to GitHub Pages
 
+# Manually trigger this from the Actions tab, filling in the target URL.
+# The crawl runs on GitHub's runner (a real Python VM — no browser CORS
+# limits), and the resulting static report is published via GitHub Pages.
+#
+# This workflow installs Chromium only when the selected audit mode needs it
+# and deliberately avoids any mid-job git commit/push. The report is uploaded
+# directly as a Pages artifact after the audit finishes.
 on:
   workflow_dispatch:
     inputs:
-      url:
-        description: "Website URL to audit"
+      start_url:
+        description: "Site to audit (must include http:// or https://)"
         required: true
-        type: string
+      audit_mode:
+        description: "Choose a fast high-level sample or a deeper site audit"
+        required: true
+        type: choice
+        options:
+          - quick
+          - full
+        default: quick
       max_pages:
-        description: "Maximum pages to crawl"
-        required: true
-        default: "25"
-        type: string
-      render_js:
-        description: "Enable JavaScript rendering"
-        required: true
-        default: true
+        description: "Full audit page limit (ignored for Quick Scan; cap 5000)"
+        required: false
+        default: "500"
+      max_depth:
+        description: "Max crawl depth"
+        required: false
+        default: "12"
+      concurrency:
+        description: "Concurrent requests"
+        required: false
+        default: "8"
+      respect_robots:
+        description: "Respect robots.txt"
         type: boolean
+        default: true
+      use_sitemap:
+        description: "Seed extra URLs from sitemap.xml"
+        type: boolean
+        default: true
+      include_subdomains:
+        description: "Include subdomains as in-scope"
+        type: boolean
+        default: false
+      check_external_links:
+        description: "Spot-check a sample of external links for broken (4xx/5xx) targets"
+        type: boolean
+        default: false
+      custom_user_agent:
+        description: "Optional custom User-Agent (only for sites you're authorized to audit whose WAF blocks the default identifier)"
+        required: false
+        default: ""
+      custom_personas:
+        description: "Optional custom persona(s) for journey mapping — see DEPLOY.md for the format. No AI key needed, purely keyword-matched."
+        required: false
+        default: ""
+      include_url_patterns:
+        description: "Only crawl URLs containing at least one of these (comma-separated plain substrings, e.g. '/blog/,/products/'). Leave blank for no restriction."
+        required: false
+        default: ""
+      exclude_url_patterns:
+        description: "Never crawl URLs containing any of these (comma-separated plain substrings, e.g. '/admin/,/checkout/'). Leave blank to exclude nothing."
+        required: false
+        default: ""
+      client_stated_page_count:
+        description: "Optional: what the client said the page count is, for a variance report against what's actually crawled. Leave blank to skip."
+        required: false
+        default: ""
+      render_js:
+        description: "Render pages with Chromium/Playwright to execute JavaScript and capture screenshots."
+        type: boolean
+        default: true
+      browser_max_pages:
+        description: "Full audit browser-rendered page limit (Quick Scan uses 10; cap 100)."
+        required: false
+        default: "50"
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
+concurrency:
+  group: "pages"
+  # false (not the GitHub Pages boilerplate default of true) is the whole
+  # point here: with true, triggering a new run CANCELS whatever's still
+  # running in this group — so if two people (or the same person twice)
+  # start an audit close together, only the newest survives and the
+  # other shows up as a failed/cancelled run. With false, GitHub instead
+  # queues additional runs and starts each one in the order it was
+  # triggered (FIFO) once the current one finishes — nothing gets
+  # cancelled, everyone's run eventually runs.
+  cancel-in-progress: false
+
 jobs:
-  audit:
-    name: Run UX Audit
+  audit-and-build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
-      - name: Install Chromium
-        if: ${{ inputs.render_js }}
-        run: |
-          python -m playwright install --with-deps chromium
+      - name: Install Chromium (only when JS rendering is enabled)
+        if: ${{ inputs.render_js || inputs.audit_mode == 'quick' }}
+        run: python -m playwright install --with-deps chromium
 
-      - name: Run UX Audit
+      - name: Run audit
         env:
-          START_URL: ${{ inputs.url }}
+          START_URL: ${{ inputs.start_url }}
+          AUDIT_MODE: ${{ inputs.audit_mode }}
+          MAX_PAGES: ${{ inputs.max_pages }}
+          MAX_DEPTH: ${{ inputs.max_depth }}
+          CONCURRENCY: ${{ inputs.concurrency }}
+          RESPECT_ROBOTS: ${{ inputs.respect_robots }}
+          USE_SITEMAP: ${{ inputs.use_sitemap }}
+          INCLUDE_SUBDOMAINS: ${{ inputs.include_subdomains }}
+          CHECK_EXTERNAL_LINKS: ${{ inputs.check_external_links }}
+          # Optional secret — AI summary is skipped without it.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # UAT/staging Basic Auth credentials, if this repo has them set as
+          # secrets — deliberately NOT a workflow_dispatch input, since a
+          # public repo's run inputs (unlike secrets) are visible to anyone
+          # who can see the Actions run. Set once in Settings > Secrets,
+          # covers whichever one UAT site you're auditing via this path.
+          BASIC_AUTH_USERNAME: ${{ secrets.BASIC_AUTH_USERNAME }}
+          BASIC_AUTH_PASSWORD: ${{ secrets.BASIC_AUTH_PASSWORD }}
+          CUSTOM_USER_AGENT: ${{ inputs.custom_user_agent }}
+          CUSTOM_PERSONAS: ${{ inputs.custom_personas }}
+          INCLUDE_URL_PATTERNS: ${{ inputs.include_url_patterns }}
+          EXCLUDE_URL_PATTERNS: ${{ inputs.exclude_url_patterns }}
+          CLIENT_STATED_PAGE_COUNT: ${{ inputs.client_stated_page_count }}
           RENDER_JS: ${{ inputs.render_js }}
-          BROWSER_MAX_PAGES: ${{ inputs.max_pages }}
-        run: |
-          python run_audit_cli.py
+          BROWSER_MAX_PAGES: ${{ inputs.browser_max_pages }}
+        run: python run_audit_cli.py
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v3
         with:
-          path: "./docs"
+          path: docs
 
-      - name: Deploy to GitHub Pages
-        id: deployment
+  deploy:
+    needs: audit-and-build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
         uses: actions/deploy-pages@v4

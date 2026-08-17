@@ -68,8 +68,14 @@ python -m playwright install chromium
 START_URL=https://example.com RENDER_JS=true BROWSER_MAX_PAGES=25 python run_audit_cli.py
 ```
 
-The default HTTP-only mode remains the recommended option for large sites;
-use browser rendering selectively because it is substantially slower.
+### Audit modes
+
+The GitHub Pages launcher offers two audit modes:
+
+- **Quick High-Level Scan** — a 25-page sample with JavaScript rendering on up to 10 pages. This is intended for a fast first-pass UX assessment and is explicitly labelled as a limited sample in the report.
+- **Full Site Audit** — uses the configured crawl limit (500 pages by default in the GitHub Actions workflow, up to the 5,000-page cap) and can render up to 50 pages with Chromium by default. The report shows how many pages were discovered and how much of that discovered set was actually crawled.
+
+Browser rendering is slower, so the Quick Scan keeps the browser budget deliberately small.
 
 That writes `docs/report.html` (open it directly in a browser) plus
 `docs/exports/*` and `docs/index.html` (the launcher, mostly relevant when
@@ -114,9 +120,7 @@ tests/                            Full integration test suite + fixtures
 
 ## Known limitations (by design, for this build specifically)
 
-- **No JS rendering.** Sites that render primary content client-side
-  (heavy SPAs) will show as thin/empty. That's supported in the sibling
-  Streamlit/Docker build, deliberately not here.
+- **JS rendering is sampled, not unlimited.** Quick Scan renders up to 10 pages in Chromium; Full Site Audit renders up to the configured browser-page limit (50 by default).
 - **No real performance data.** No Core Web Vitals sampling in this build.
 - **No run history / trend tracking.** Each run is a fresh snapshot; there's
   no persisted record of past scores for the same domain in this build.
