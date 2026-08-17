@@ -6,4 +6,4 @@ openpyxl==3.1.5
 anthropic==0.34.2
 pytest==8.3.3
 pytest-asyncio==0.24.0
-playwright==1.51.1
+playwright==1.52.0
